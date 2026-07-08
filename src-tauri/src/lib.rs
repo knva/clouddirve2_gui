@@ -198,7 +198,11 @@ pub fn run() {
             if let tauri::WindowEvent::CloseRequested { .. } = event {
                 // Kill the backend process when the window is closed
                 let state: tauri::State<BackendProcess> = window.state();
-                if let Some(mut child) = state.0.lock().unwrap().take() {
+                let child = {
+                    let mut guard = state.0.lock().unwrap();
+                    guard.take()
+                };
+                if let Some(mut child) = child {
                     let _ = child.kill();
                 }
             }

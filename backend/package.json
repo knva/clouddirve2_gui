@@ -1,0 +1,19 @@
+{
+  "name": "happycd2-backend",
+  "version": "1.0.0",
+  "description": "CloudDrive2 gRPC backend wrapper - Express REST API",
+  "main": "server.js",
+  "type": "module",
+  "scripts": {
+    "start": "node server.js",
+    "dev": "node --watch server.js"
+  },
+  "dependencies": {
+    "@grpc/grpc-js": "^1.12.0",
+    "@grpc/proto-loader": "^0.7.13",
+    "express": "^4.21.0",
+    "cors": "^2.8.5",
+    "multer": "^1.4.5-lts.1",
+    "ws": "^8.18.0"
+  }
+}

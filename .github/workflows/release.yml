@@ -1,0 +1,71 @@
+name: Build and Release
+
+on:
+  push:
+    tags:
+      - "v*"
+  workflow_dispatch:
+
+jobs:
+  build-windows:
+    runs-on: windows-latest
+
+    steps:
+      - name: Checkout code
+        uses: actions/checkout@v4
+
+      - name: Setup Node.js
+        uses: actions/setup-node@v4
+        with:
+          node-version: 20
+
+      - name: Setup Rust toolchain
+        uses: dtolnay/rust-toolchain@stable
+
+      - name: Cache Rust dependencies
+        uses: Swatinem/rust-cache@v2
+        with:
+          workspaces: src-tauri -> target
+
+      - name: Install frontend dependencies
+        run: npm install
+
+      - name: Install backend dependencies
+        run: |
+          cd backend
+          npm install
+
+      - name: Download proto file
+        run: node download-proto.cjs || true
+        shell: bash
+        continue-on-error: true
+
+      - name: Build Tauri app
+        uses: tauri-apps/tauri-action@v0
+        env:
+          GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+        with:
+          tagName: ${{ github.ref_name }}
+          releaseName: "HappyCD2 ${{ github.ref_name }}"
+          releaseBody: |
+            ## HappyCD2 ${{ github.ref_name }}
+
+            CloudDrive2 GUI 管理器
+
+            ### 下载说明
+            - Windows 用户请下载 `.exe` 安装包（NSIS）或 `.msi` 安装包
+            - 安装后需要系统已安装 Node.js 运行时
+
+            ### 系统要求
+            - Windows 10/11 (64位)
+            - Node.js 18+ (用于后端服务)
+            - CloudDrive2 服务端运行中
+
+            ### 使用方法
+            1. 下载并安装应用程序
+            2. 确保 CloudDrive2 服务端正在运行
+            3. 启动 HappyCD2，在设置页面配置服务器地址
+            4. 开始管理你的云盘文件
+          releaseDraft: false
+          prerelease: false
+          args: --target x86_64-pc-windows-msvc

@@ -1,6 +1,6 @@
 [package]
 name = "happycd2"
-version = "1.0.1"
+version = "1.0.2"
 description = "CloudDrive2 GUI Manager"
 authors = ["HappyCD2"]
 edition = "2021"
@@ -11,6 +11,8 @@ crate-type = ["staticlib", "cdylib", "rlib"]
 
 [build-dependencies]
 tauri-build = { version = "2", features = [] }
+tonic-build = "0.12"
+protoc-bin-vendored = "3"
 
 [dependencies]
 tauri = { version = "2", features = [] }
@@ -21,6 +23,11 @@ serde = { version = "1", features = ["derive"] }
 serde_json = "1"
 which = "6"
 arboard = "3"
+tonic = "0.12"
+prost = "0.13"
+prost-types = "0.13"
+tokio = { version = "1", features = ["rt-multi-thread", "macros"] }
+chrono = "0.4"
 
 [features]
 custom-protocol = ["tauri/custom-protocol"]

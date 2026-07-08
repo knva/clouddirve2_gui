@@ -1,361 +1,274 @@
-import axios from "axios";
+import { invoke } from "@tauri-apps/api/core";
 
-const BASE_URL = "http://localhost:13666/api";
-
-const api = axios.create({
-  baseURL: BASE_URL,
-  timeout: 30000,
-  headers: {
-    "Content-Type": "application/json",
-  },
-});
-
-// Add response interceptor for error handling
-api.interceptors.response.use(
-  (response) => response,
-  (error) => {
-    if (error.response?.data?.error) {
-      throw new Error(error.response.data.error);
-    }
-    if (error.code === "ERR_NETWORK") {
-      throw new Error("无法连接到后端服务，请确保后端服务已启动 (npm run backend)");
-    }
-    throw error;
-  }
-);
+// Helper: call a gRPC method via Tauri
+async function grpc(method: string, params?: any): Promise<any> {
+  return invoke("grpc_call", { method, params: params || {} });
+}
 
 // ==================== System & Auth ====================
 export const systemApi = {
-  health: () => api.get("/health").then((r) => r.data),
-  getSystemInfo: () => api.get("/system/info").then((r) => r.data),
-  getConfig: () => api.get("/token").then((r) => r.data),
-  setConfig: (url: string, token?: string) =>
-    api.post("/config", { url, token }).then((r) => r.data),
-  setToken: (token: string) => api.post("/token", { token }).then((r) => r.data),
-  getRuntimeInfo: () => api.get("/runtime-info").then((r) => r.data),
-  getRunningInfo: () => api.get("/running-info").then((r) => r.data),
-  getServiceCapabilities: () => api.get("/service/capabilities").then((r) => r.data),
-  restartService: () => api.post("/service/restart").then((r) => r.data),
-  shutdownService: () => api.post("/service/shutdown").then((r) => r.data),
+  health: () => invoke("grpc_health"),
+  getSystemInfo: () => grpc("GetSystemInfo"),
+  getConfig: () => invoke("grpc_get_token"),
+  setConfig: (url: string, token?: string) => invoke("grpc_set_config", { url, token: token || null }),
+  setToken: (token: string) => invoke("grpc_set_token", { token }),
+  getRuntimeInfo: () => grpc("GetRuntimeInfo"),
+  getRunningInfo: () => grpc("GetRunningInfo"),
+  getServiceCapabilities: () => grpc("GetServiceCapabilities"),
+  restartService: () => grpc("RestartService"),
+  shutdownService: () => grpc("ShutdownService"),
 };
 
 export const authApi = {
-  getToken: (userName: string, password: string, totpCode?: string) =>
-    api.post("/auth/get-token", { userName, password, totpCode }).then((r) => r.data),
-  login: (userName: string, password: string, synDataToCloud = true) =>
-    api.post("/auth/login", { userName, password, synDataToCloud }).then((r) => r.data),
-  login2FA: (userName: string, password: string, totpCode: string, synDataToCloud = true) =>
-    api.post("/auth/login-2fa", { userName, password, totpCode, synDataToCloud }).then((r) => r.data),
-  logout: (logoutFromCloudFS = true) =>
-    api.post("/auth/logout", { logoutFromCloudFS }).then((r) => r.data),
-  getAccountStatus: () => api.get("/account/status").then((r) => r.data),
-  changePassword: (oldPassword: string, newPassword: string, totpCode?: string) =>
-    api.post("/account/change-password", { oldPassword, newPassword, totpCode }).then((r) => r.data),
-  register: (userName: string, password: string) =>
-    api.post("/auth/register", { userName, password }).then((r) => r.data),
+  getToken: (userName: string, password: string, totpCode?: string) => grpc("GetToken", { userName, password, totpCode }),
+  login: (userName: string, password: string, synDataToCloud = true) => grpc("Login", { userName, password, synDataToCloud }),
+  login2FA: (userName: string, password: string, totpCode: string, synDataToCloud = true) => grpc("LoginWith2FA", { userName, password, totpCode, synDataToCloud }),
+  logout: (logoutFromCloudFS = true) => grpc("Logout", { logoutFromCloudFS }),
+  getAccountStatus: () => grpc("GetAccountStatus"),
+  changePassword: (oldPassword: string, newPassword: string, totpCode?: string) => grpc("ChangePassword", { oldPassword, newPassword, totpCode }),
+  register: (userName: string, password: string) => grpc("Register", { userName, password }),
 };
 
 // ==================== Files ====================
 export const fileApi = {
-  list: (path: string, forceRefresh = false) =>
-    api.get("/files/list", { params: { path, forceRefresh } }).then((r) => r.data),
-  search: (path: string, searchFor: string, fuzzyMatch = true, contentSearch = false) =>
-    api.get("/files/search", { params: { path, searchFor, fuzzyMatch, contentSearch } }).then((r) => r.data),
-  find: (parentPath: string, path: string) =>
-    api.get("/files/find", { params: { parentPath, path } }).then((r) => r.data),
-  createFolder: (parentPath: string, folderName: string) =>
-    api.post("/files/create-folder", { parentPath, folderName }).then((r) => r.data),
-  createEncryptedFolder: (parentPath: string, folderName: string, password: string, savePassword: boolean) =>
-    api.post("/files/create-encrypted-folder", { parentPath, folderName, password, savePassword }).then((r) => r.data),
-  unlock: (path: string, password: string, permanentUnlock: boolean) =>
-    api.post("/files/unlock", { path, password, permanentUnlock }).then((r) => r.data),
-  lock: (path: string) => api.post("/files/lock", { path }).then((r) => r.data),
-  rename: (path: string, newName: string) =>
-    api.post("/files/rename", { path, newName }).then((r) => r.data),
-  move: (paths: string[], destPath: string, conflictPolicy = "Rename") =>
-    api.post("/files/move", { paths, destPath, conflictPolicy }).then((r) => r.data),
-  copy: (paths: string[], destPath: string, conflictPolicy = "Rename") =>
-    api.post("/files/copy", { paths, destPath, conflictPolicy }).then((r) => r.data),
-  delete: (path: string) => api.post("/files/delete", { path }).then((r) => r.data),
-  deletePermanently: (path: string) =>
-    api.post("/files/delete-permanently", { path }).then((r) => r.data),
-  deleteBatch: (paths: string[]) =>
-    api.post("/files/delete-batch", { paths }).then((r) => r.data),
-  deleteBatchPermanently: (paths: string[]) =>
-    api.post("/files/delete-batch-permanently", { paths }).then((r) => r.data),
-  detailProperties: (path: string) =>
-    api.get("/files/detail-properties", { params: { path } }).then((r) => r.data),
-  spaceInfo: (path: string) => api.get("/files/space-info", { params: { path } }).then((r) => r.data),
-  cloudMemberships: (path: string) =>
-    api.get("/files/cloud-memberships", { params: { path } }).then((r) => r.data),
-  metadata: (path: string) => api.get("/files/metadata", { params: { path } }).then((r) => r.data),
-  downloadUrl: (path: string, preview = false, lazy_read = false, get_direct_url = false) =>
-    api.get("/files/download-url", { params: { path, preview, lazy_read, get_direct_url } }).then((r) => r.data),
-  closeReader: (path: string) => api.post("/files/close-reader", { path }).then((r) => r.data),
-  forceExpireCache: (path: string) => api.post("/files/force-expire-cache", { path }).then((r) => r.data),
-  originalPath: (path: string) => api.get("/files/original-path", { params: { path } }).then((r) => r.data),
+  list: (path: string, forceRefresh = false) => grpc("GetSubFiles", { path, forceRefresh }),
+  search: (path: string, searchFor: string, fuzzyMatch = true, contentSearch = false) => grpc("GetSearchResults", { path, searchFor, fuzzyMatch, contentSearch }),
+  find: (parentPath: string, path: string) => grpc("FindFileByPath", { parentPath, path }),
+  createFolder: (parentPath: string, folderName: string) => grpc("CreateFolder", { parentPath, folderName }),
+  createEncryptedFolder: (parentPath: string, folderName: string, password: string, savePassword: boolean) => grpc("CreateEncryptedFolder", { parentPath, folderName, password, savePassword }),
+  unlock: (path: string, password: string, permanentUnlock: boolean) => grpc("UnlockEncryptedFile", { path, password, permanentUnlock }),
+  lock: (path: string) => grpc("LockEncryptedFile", { path }),
+  rename: (path: string, newName: string) => grpc("RenameFile", { path, newName }),
+  move: (paths: string[], destPath: string, conflictPolicy = "Rename") => grpc("MoveFile", { paths, destPath, conflictPolicy }),
+  copy: (paths: string[], destPath: string, conflictPolicy = "Rename") => grpc("CopyFile", { paths, destPath, conflictPolicy }),
+  delete: (path: string) => grpc("DeleteFile", { path }),
+  deletePermanently: (path: string) => grpc("DeleteFilePermanently", { path }),
+  deleteBatch: (paths: string[]) => grpc("DeleteFiles", { paths }),
+  deleteBatchPermanently: (paths: string[]) => grpc("DeleteFilesPermanently", { paths }),
+  detailProperties: (path: string) => grpc("GetFileDetailProperties", { path }),
+  spaceInfo: (path: string) => grpc("GetSpaceInfo", { path }),
+  cloudMemberships: (path: string) => grpc("GetCloudMemberships", { path }),
+  metadata: (path: string) => grpc("GetMetaData", { path }),
+  downloadUrl: (path: string, preview = false, lazy_read = false, get_direct_url = false) => grpc("GetDownloadUrlPath", { path, preview, lazy_read, get_direct_url }),
+  closeReader: (path: string) => grpc("CloseFileReader", { path }),
+  forceExpireCache: (path: string) => grpc("ForceExpireDirCache", { path }),
+  originalPath: (path: string) => grpc("GetOriginalPath", { path }),
 };
 
 // ==================== Offline ====================
 export const offlineApi = {
-  add: (urls: string, toFolder: string, checkFolderAfterSecs?: number) =>
-    api.post("/offline/add", { urls, toFolder, checkFolderAfterSecs }).then((r) => r.data),
-  remove: (cloudName: string, cloudAccountId: string, deleteFiles: boolean, infoHashes: string[], path?: string) =>
-    api.post("/offline/remove", { cloudName, cloudAccountId, deleteFiles, infoHashes, path }).then((r) => r.data),
-  list: (path: string) => api.get("/offline/list", { params: { path } }).then((r) => r.data),
-  listAll: (cloudName: string, cloudAccountId: string, page = 1, path?: string) =>
-    api.get("/offline/list-all", { params: { cloudName, cloudAccountId, page, path } }).then((r) => r.data),
-  quota: (cloudName: string, cloudAccountId: string, path?: string) =>
-    api.get("/offline/quota", { params: { cloudName, cloudAccountId, path } }).then((r) => r.data),
-  clear: (cloudName: string, cloudAccountId: string, filter: string, deleteFiles: boolean, path?: string) =>
-    api.post("/offline/clear", { cloudName, cloudAccountId, filter, deleteFiles, path }).then((r) => r.data),
-  restart: (cloudName: string, cloudAccountId: string, infoHash: string, url: string, parentId: string, path?: string) =>
-    api.post("/offline/restart", { cloudName, cloudAccountId, infoHash, url, parentId, path }).then((r) => r.data),
+  add: (urls: string, toFolder: string, checkFolderAfterSecs?: number) => grpc("AddOfflineFiles", { urls, toFolder, checkFolderAfterSecs }),
+  remove: (cloudName: string, cloudAccountId: string, deleteFiles: boolean, infoHashes: string[], path?: string) => grpc("RemoveOfflineFiles", { cloudName, cloudAccountId, deleteFiles, infoHashes, path }),
+  list: (path: string) => grpc("ListOfflineFilesByPath", { path }),
+  listAll: (cloudName: string, cloudAccountId: string, page = 1, path?: string) => grpc("ListAllOfflineFiles", { cloudName, cloudAccountId, page, path }),
+  quota: (cloudName: string, cloudAccountId: string, path?: string) => grpc("GetOfflineQuotaInfo", { cloudName, cloudAccountId, path }),
+  clear: (cloudName: string, cloudAccountId: string, filter: string, deleteFiles: boolean, path?: string) => grpc("ClearOfflineFiles", { cloudName, cloudAccountId, filter, deleteFiles, path }),
+  restart: (cloudName: string, cloudAccountId: string, infoHash: string, url: string, parentId: string, path?: string) => grpc("RestartOfflineTask", { cloudName, cloudAccountId, infoHash, url, parentId, path }),
 };
 
 // ==================== Mount ====================
 export const mountApi = {
-  canAdd: () => api.get("/mount/can-add").then((r) => r.data),
-  list: () => api.get("/mount/points").then((r) => r.data),
-  add: (mountOption: any) => api.post("/mount/add", mountOption).then((r) => r.data),
-  remove: (mountPoint: string) => api.post("/mount/remove", { mountPoint }).then((r) => r.data),
-  mount: (mountPoint: string) => api.post("/mount/mount", { mountPoint }).then((r) => r.data),
-  unmount: (mountPoint: string) => api.post("/mount/unmount", { mountPoint }).then((r) => r.data),
-  update: (mountPoint: string, newMountOption: any) =>
-    api.post("/mount/update", { mountPoint, newMountOption }).then((r) => r.data),
-  driveLetters: () => api.get("/mount/drive-letters").then((r) => r.data),
-  hasDriveLetters: () => api.get("/mount/has-drive-letters").then((r) => r.data),
-  canBoth: () => api.get("/mount/can-both").then((r) => r.data),
-  localSubFiles: (parentFolder: string, folderOnly = false, includeCloudDrive = false, includeAvailableDrive = false) =>
-    api.get("/mount/local-subfiles", { params: { parentFolder, folderOnly, includeCloudDrive, includeAvailableDrive } }).then((r) => r.data),
-  localCreateFolder: (parentFolder: string, folderName: string) =>
-    api.post("/mount/local-create-folder", { parentFolder, folderName }).then((r) => r.data),
+  canAdd: () => grpc("CanAddMoreMountPoints"),
+  list: () => grpc("GetMountPoints"),
+  add: (mountOption: any) => grpc("AddMountPoint", mountOption),
+  remove: (mountPoint: string) => grpc("RemoveMountPoint", { mountPoint }),
+  mount: (mountPoint: string) => grpc("Mount", { mountPoint }),
+  unmount: (mountPoint: string) => grpc("Unmount", { mountPoint }),
+  update: (mountPoint: string, newMountOption: any) => grpc("UpdateMountPoint", { mountPoint, ...newMountOption }),
+  driveLetters: () => grpc("GetAvailableDriveLetters"),
+  hasDriveLetters: () => grpc("HasDriveLetters"),
+  canBoth: () => grpc("CanMountBothLocalAndCloud"),
+  localSubFiles: (parentFolder: string) => grpc("LocalGetSubFiles", { parentFolder }),
+  localCreateFolder: (parentFolder: string, folderName: string) => grpc("LocalCreateFolder", { parentFolder, folderName }),
 };
 
 // ==================== Tasks ====================
 export const taskApi = {
-  allCount: () => api.get("/tasks/count").then((r) => r.data),
-  downloadCount: () => api.get("/tasks/download/count").then((r) => r.data),
-  downloadList: () => api.get("/tasks/download/list").then((r) => r.data),
-  uploadCount: () => api.get("/tasks/upload/count").then((r) => r.data),
-  uploadList: (getAll = true, itemsPerPage = 50, pageNumber = 1, filter = "") =>
-    api.get("/tasks/upload/list", { params: { getAll, itemsPerPage, pageNumber, filter } }).then((r) => r.data),
-  cancelAllUploads: () => api.post("/tasks/upload/cancel-all").then((r) => r.data),
-  cancelUploads: (keys: string[]) => api.post("/tasks/upload/cancel", { keys }).then((r) => r.data),
-  pauseAllUploads: () => api.post("/tasks/upload/pause-all").then((r) => r.data),
-  pauseUploads: (keys: string[]) => api.post("/tasks/upload/pause", { keys }).then((r) => r.data),
-  resumeAllUploads: () => api.post("/tasks/upload/resume-all").then((r) => r.data),
-  resumeUploads: (keys: string[]) => api.post("/tasks/upload/resume", { keys }).then((r) => r.data),
-  copyList: () => api.get("/tasks/copy/list").then((r) => r.data),
-  mergeList: () => api.get("/tasks/merge/list").then((r) => r.data),
-  cancelMerge: (sourcePath: string, destPath: string) =>
-    api.post("/tasks/merge/cancel", { sourcePath, destPath }).then((r) => r.data),
-  cancelCopy: (sourcePath: string, destPath: string) =>
-    api.post("/tasks/copy/cancel", { sourcePath, destPath }).then((r) => r.data),
-  pauseCopy: (sourcePath: string, destPath: string, pause: boolean) =>
-    api.post("/tasks/copy/pause", { sourcePath, destPath, pause }).then((r) => r.data),
-  restartCopy: (sourcePath: string, destPath: string) =>
-    api.post("/tasks/copy/restart", { sourcePath, destPath }).then((r) => r.data),
-  removeCompletedCopy: () => api.post("/tasks/copy/remove-completed").then((r) => r.data),
-  removeAllCopy: () => api.post("/tasks/copy/remove-all").then((r) => r.data),
-  removeCopy: (taskKeys: string[]) => api.post("/tasks/copy/remove", { taskKeys }).then((r) => r.data),
-  pauseAllCopy: (pause: boolean) => api.post("/tasks/copy/pause-all", { pause }).then((r) => r.data),
-  pauseCopyBatch: (taskKeys: string[], pause: boolean) =>
-    api.post("/tasks/copy/pause-batch", { taskKeys, pause }).then((r) => r.data),
-  resumeAllCopy: () => api.post("/tasks/copy/resume-all").then((r) => r.data),
-  resumeCopy: (taskKeys: string[]) => api.post("/tasks/copy/resume", { taskKeys }).then((r) => r.data),
-  openHandles: () => api.get("/tasks/open-handles").then((r) => r.data),
+  allCount: () => grpc("GetAllTasksCount"),
+  downloadCount: () => grpc("GetDownloadFileCount"),
+  downloadList: () => grpc("GetDownloadFileList"),
+  uploadCount: () => grpc("GetUploadFileCount"),
+  uploadList: (getAll = true, itemsPerPage = 50, pageNumber = 1, filter = "") => grpc("GetUploadFileList", { getAll, itemsPerPage, pageNumber, filter }),
+  cancelAllUploads: () => grpc("CancelAllUploadFiles"),
+  cancelUploads: (keys: string[]) => grpc("CancelUploadFiles", { keys }),
+  pauseAllUploads: () => grpc("PauseAllUploadFiles"),
+  pauseUploads: (keys: string[]) => grpc("PauseUploadFiles", { keys }),
+  resumeAllUploads: () => grpc("ResumeAllUploadFiles"),
+  resumeUploads: (keys: string[]) => grpc("ResumeUploadFiles", { keys }),
+  copyList: () => grpc("GetCopyTasks"),
+  mergeList: () => grpc("GetMergeTasks"),
+  cancelMerge: (sourcePath: string, destPath: string) => grpc("CancelMergeTask", { sourcePath, destPath }),
+  cancelCopy: (sourcePath: string, destPath: string) => grpc("CancelCopyTask", { sourcePath, destPath }),
+  pauseCopy: (sourcePath: string, destPath: string, pause: boolean) => grpc("PauseCopyTask", { sourcePath, destPath, pause }),
+  restartCopy: (sourcePath: string, destPath: string) => grpc("RestartCopyTask", { sourcePath, destPath }),
+  removeCompletedCopy: () => grpc("RemoveCompletedCopyTasks"),
+  removeAllCopy: () => grpc("RemoveAllCopyTasks"),
+  removeCopy: (taskKeys: string[]) => grpc("RemoveCopyTasks", { taskKeys }),
+  pauseAllCopy: (pause: boolean) => grpc("PauseAllCopyTasks", { pause }),
+  pauseCopyBatch: (taskKeys: string[], pause: boolean) => grpc("PauseCopyTasks", { taskKeys, pause }),
+  resumeAllCopy: () => grpc("ResumeAllCopyTasks"),
+  resumeCopy: (taskKeys: string[]) => grpc("ResumeCopyTasks", { taskKeys }),
+  openHandles: () => grpc("GetOpenFileHandles"),
 };
 
 // ==================== Cloud APIs ====================
 export const cloudApi = {
-  canAdd: () => api.get("/cloud-apis/can-add").then((r) => r.data),
-  list: () => api.get("/cloud-apis").then((r) => r.data),
-  getConfig: (cloudName: string, userName: string) =>
-    api.get("/cloud-apis/config", { params: { cloudName, userName } }).then((r) => r.data),
-  setConfig: (cloudName: string, userName: string, config: any) =>
-    api.post("/cloud-apis/config", { cloudName, userName, config }).then((r) => r.data),
-  remove: (cloudName: string, userName: string, permanentRemove = false) =>
-    api.post("/cloud-apis/remove", { cloudName, userName, permanentRemove }).then((r) => r.data),
-  login115Editthiscookie: (editThiscookieString: string) =>
-    api.post("/cloud-apis/login/115-editthiscookie", { editThiscookieString }).then((r) => r.data),
-  login115OpenOAuth: (req: any) => api.post("/cloud-apis/login/115-open-oauth", req).then((r) => r.data),
-  loginAliyundriveOAuth: (req: any) => api.post("/cloud-apis/login/aliyundrive-oauth", req).then((r) => r.data),
-  loginAliyundriveRefreshtoken: (refreshToken: string, useOpenAPI = false) =>
-    api.post("/cloud-apis/login/aliyundrive-refreshtoken", { refreshToken, useOpenAPI }).then((r) => r.data),
-  loginBaiduPanOAuth: (req: any) => api.post("/cloud-apis/login/baidupan-oauth", req).then((r) => r.data),
-  loginOneDriveOAuth: (req: any) => api.post("/cloud-apis/login/onedrive-oauth", req).then((r) => r.data),
-  loginGoogleDriveOAuth: (req: any) => api.post("/cloud-apis/login/google-drive-oauth", req).then((r) => r.data),
-  loginGoogleDriveRefreshToken: (req: any) =>
-    api.post("/cloud-apis/login/google-drive-refreshtoken", req).then((r) => r.data),
-  loginXunleiOAuth: (req: any) => api.post("/cloud-apis/login/xunlei-oauth", req).then((r) => r.data),
-  loginXunleiOpenOAuth: (req: any) => api.post("/cloud-apis/login/xunlei-open-oauth", req).then((r) => r.data),
-  login123panOAuth: (req: any) => api.post("/cloud-apis/login/123pan-oauth", req).then((r) => r.data),
-  loginWebDav: (req: any) => api.post("/cloud-apis/login/webdav", req).then((r) => r.data),
-  loginS3: (req: any) => api.post("/cloud-apis/login/s3", req).then((r) => r.data),
-  loginLocalFolder: (localFolderPath: string) =>
-    api.post("/cloud-apis/login/local-folder", { localFolderPath }).then((r) => r.data),
-  loginCloudDrive: (req: any) => api.post("/cloud-apis/login/clouddrive", req).then((r) => r.data),
-  loginSftp: (req: any) => api.post("/cloud-apis/login/sftp", req).then((r) => r.data),
-  loginFtp: (req: any) => api.post("/cloud-apis/login/ftp", req).then((r) => r.data),
-  loginSmb: (req: any) => api.post("/cloud-apis/login/smb", req).then((r) => r.data),
-  discoverSmbServers: () => api.get("/cloud-apis/discover-smb-servers").then((r) => r.data),
-  discoverSmbShares: (req: any) => api.post("/cloud-apis/discover-smb-shares", req).then((r) => r.data),
-  createOAuthState: (req: any) => api.post("/cloud-apis/oauth-state", req).then((r) => r.data),
+  canAdd: () => grpc("CanAddMoreCloudApis"),
+  list: () => grpc("GetAllCloudApis"),
+  getConfig: (cloudName: string, userName: string) => grpc("GetCloudAPIConfig", { cloudName, userName }),
+  setConfig: (cloudName: string, userName: string, config: any) => grpc("SetCloudAPIConfig", { cloudName, userName, config }),
+  remove: (cloudName: string, userName: string, permanentRemove = false) => grpc("RemoveCloudAPI", { cloudName, userName, permanentRemove }),
+  login115Editthiscookie: (editThiscookieString: string) => grpc("APILogin115Editthiscookie", { editThiscookieString }),
+  login115OpenOAuth: (req: any) => grpc("APILogin115OpenOAuth", req),
+  loginAliyundriveOAuth: (req: any) => grpc("APILoginAliyundriveOAuth", req),
+  loginAliyundriveRefreshtoken: (refreshToken: string, useOpenAPI = false) => grpc("APILoginAliyundriveRefreshtoken", { refreshToken, useOpenAPI }),
+  loginBaiduPanOAuth: (req: any) => grpc("APILoginBaiduPanOAuth", req),
+  loginOneDriveOAuth: (req: any) => grpc("APILoginOneDriveOAuth", req),
+  loginGoogleDriveOAuth: (req: any) => grpc("ApiLoginGoogleDriveOAuth", req),
+  loginGoogleDriveRefreshToken: (req: any) => grpc("ApiLoginGoogleDriveRefreshToken", req),
+  loginXunleiOAuth: (req: any) => grpc("ApiLoginXunleiOAuth", req),
+  loginXunleiOpenOAuth: (req: any) => grpc("ApiLoginXunleiOpenOAuth", req),
+  login123panOAuth: (req: any) => grpc("ApiLogin123panOAuth", req),
+  loginWebDav: (req: any) => grpc("APILoginWebDav", req),
+  loginS3: (req: any) => grpc("APILoginS3", req),
+  loginLocalFolder: (localFolderPath: string) => grpc("APIAddLocalFolder", { localFolderPath }),
+  loginCloudDrive: (req: any) => grpc("APILoginCloudDrive", req),
+  loginSftp: (req: any) => grpc("APILoginSftp", req),
+  loginFtp: (req: any) => grpc("APILoginFtp", req),
+  loginSmb: (req: any) => grpc("APILoginSmb", req),
+  discoverSmbServers: () => grpc("DiscoverSmbServers"),
+  discoverSmbShares: (req: any) => grpc("DiscoverSmbShares", req),
+  createOAuthState: (req: any) => grpc("CreateOAuthState", req),
 };
 
 // ==================== Settings ====================
 export const settingsApi = {
-  get: () => api.get("/settings").then((r) => r.data),
-  set: (settings: any) => api.post("/settings", settings).then((r) => r.data),
-  setDirCacheTime: (path: string, dirCachTimeToLiveSecs?: number) =>
-    api.post("/settings/dir-cache-time", { path, dirCachTimeToLiveSecs }).then((r) => r.data),
-  effectiveDirCacheTime: (path: string) =>
-    api.get("/settings/effective-dir-cache-time", { params: { path } }).then((r) => r.data),
-  vacuumDirCache: () => api.post("/settings/vacuum-dir-cache").then((r) => r.data),
-  vacuumProgress: () => api.get("/settings/vacuum-progress").then((r) => r.data),
-  dirCacheDbSize: () => api.get("/settings/dir-cache-db-size").then((r) => r.data),
-  openFileTable: (includeDir = false) =>
-    api.get("/settings/open-file-table", { params: { includeDir } }).then((r) => r.data),
-  dirCacheTable: () => api.get("/settings/dir-cache-table").then((r) => r.data),
-  referencedEntryPaths: (path: string) =>
-    api.get("/settings/referenced-entry-paths", { params: { path } }).then((r) => r.data),
-  tempFileTable: () => api.get("/settings/temp-file-table").then((r) => r.data),
-  machineId: () => api.get("/machine-id").then((r) => r.data),
-  onlineDevices: () => api.get("/online-devices").then((r) => r.data),
-  kickoutDevice: (deviceId: string) => api.post("/kickout-device", { deviceId }).then((r) => r.data),
-  logFiles: () => api.get("/log-files").then((r) => r.data),
+  get: () => grpc("GetSystemSettings"),
+  set: (settings: any) => grpc("SetSystemSettings", settings),
+  setDirCacheTime: (path: string, dirCachTimeToLiveSecs?: number) => grpc("SetDirCacheTimeSecs", { path, dirCachTimeToLiveSecs }),
+  effectiveDirCacheTime: (path: string) => grpc("GetEffectiveDirCacheTimeSecs", { path }),
+  vacuumDirCache: () => grpc("VacuumDirCache"),
+  vacuumProgress: () => grpc("GetVacuumProgress"),
+  dirCacheDbSize: () => grpc("GetDirCacheDbSize"),
+  openFileTable: (includeDir = false) => grpc("GetOpenFileTable", { includeDir }),
+  dirCacheTable: () => grpc("GetDirCacheTable"),
+  referencedEntryPaths: (path: string) => grpc("GetReferencedEntryPaths", { path }),
+  tempFileTable: () => grpc("GetTempFileTable"),
+  machineId: () => grpc("GetMachineId"),
+  onlineDevices: () => grpc("GetOnlineDevices"),
+  kickoutDevice: (deviceId: string) => grpc("KickoutDevice", { deviceId }),
+  logFiles: () => grpc("ListLogFiles"),
 };
 
 // ==================== Disk Cache ====================
 export const diskCacheApi = {
-  stats: () => api.get("/disk-cache/stats").then((r) => r.data),
-  purge: () => api.post("/disk-cache/purge").then((r) => r.data),
-  setEvictionStrategy: (strategy: string) =>
-    api.post("/disk-cache/eviction-strategy", { strategy }).then((r) => r.data),
-  setFolder: (req: any) => api.post("/disk-cache/folder", req).then((r) => r.data),
-  removeFolder: (path: string) => api.post("/disk-cache/folder/remove", { path }).then((r) => r.data),
-  folders: () => api.get("/disk-cache/folders").then((r) => r.data),
-  prefetch: (req: any) => api.post("/disk-cache/prefetch", req).then((r) => r.data),
-  cancelPrefetch: (path: string, hintIds: number[]) =>
-    api.post("/disk-cache/cancel-prefetch", { path, hintIds }).then((r) => r.data),
-  activePrefetch: () => api.get("/disk-cache/active-prefetch").then((r) => r.data),
+  stats: () => grpc("GetFileBufferDiskCacheStats"),
+  purge: () => grpc("PurgeFileBufferDiskCache"),
+  setEvictionStrategy: (strategy: string) => grpc("SetDiskCacheEvictionStrategy", { strategy }),
+  setFolder: (req: any) => grpc("SetFolderDiskCache", req),
+  removeFolder: (path: string) => grpc("RemoveFolderDiskCache", { path }),
+  folders: () => grpc("ListDiskCacheFolders"),
+  prefetch: (req: any) => grpc("PrefetchFileRanges", req),
+  cancelPrefetch: (path: string, hintIds: number[]) => grpc("CancelFilePrefetch", { path, hintIds }),
+  activePrefetch: () => grpc("GetActivePrefetchHints"),
 };
 
 // ==================== 2FA ====================
 export const twoFAApi = {
-  status: () => api.get("/2fa/status").then((r) => r.data),
-  setup: (password: string) => api.post("/2fa/setup", { password }).then((r) => r.data),
-  enable: (totpCode: string) => api.post("/2fa/enable", { totpCode }).then((r) => r.data),
-  disable: (totpCode: string) => api.post("/2fa/disable", { totpCode }).then((r) => r.data),
-  recoveryCodes: (totpCode: string) => api.post("/2fa/recovery-codes", { totpCode }).then((r) => r.data),
-  regenerateRecoveryCodes: (totpCode: string) =>
-    api.post("/2fa/regenerate-recovery-codes", { totpCode }).then((r) => r.data),
-  unbindDevice: (password: string, totpCode?: string) =>
-    api.post("/2fa/unbind-device", { password, totpCode }).then((r) => r.data),
-  sendDisableEmail: (email: string) =>
-    api.post("/2fa/send-disable-email", { email }).then((r) => r.data),
-  disableByEmail: (disableCode: string, password: string) =>
-    api.post("/2fa/disable-by-email", { disableCode, password }).then((r) => r.data),
+  status: () => grpc("Check2FAStatus"),
+  setup: (password: string) => grpc("Setup2FA", { password }),
+  enable: (totpCode: string) => grpc("Enable2FA", { totpCode }),
+  disable: (totpCode: string) => grpc("Disable2FA", { totpCode }),
+  recoveryCodes: (totpCode: string) => grpc("GetRecoveryCodes", { totpCode }),
+  regenerateRecoveryCodes: (totpCode: string) => grpc("RegenerateRecoveryCodes", { totpCode }),
+  unbindDevice: (password: string, totpCode?: string) => grpc("UnbindDevice", { password, totpCode }),
+  sendDisableEmail: (email: string) => grpc("SendDisable2FAEmail", { email }),
+  disableByEmail: (disableCode: string, password: string) => grpc("Disable2FAByEmail", { disableCode, password }),
 };
 
 // ==================== Sessions ====================
 export const sessionApi = {
-  list: () => api.get("/sessions").then((r) => r.data),
-  revoke: (sessionId: string) => api.post("/sessions/revoke", { sessionId }).then((r) => r.data),
-  revokeOthers: () => api.post("/sessions/revoke-others").then((r) => r.data),
+  list: () => grpc("GetSessions"),
+  revoke: (sessionId: string) => grpc("RevokeSession", { sessionId }),
+  revokeOthers: () => grpc("RevokeOtherSessions"),
 };
 
 // ==================== Backup ====================
 export const backupApi = {
-  all: () => api.get("/backup/all").then((r) => r.data),
-  status: (sourcePath: string) => api.get("/backup/status", { params: { sourcePath } }).then((r) => r.data),
-  add: (backup: any) => api.post("/backup/add", backup).then((r) => r.data),
-  remove: (sourcePath: string) => api.post("/backup/remove", { sourcePath }).then((r) => r.data),
-  update: (backup: any) => api.post("/backup/update", backup).then((r) => r.data),
-  setEnabled: (sourcePath: string, isEnabled: boolean) =>
-    api.post("/backup/set-enabled", { sourcePath, isEnabled }).then((r) => r.data),
-  restartWalk: (sourcePath: string) => api.post("/backup/restart-walk", { sourcePath }).then((r) => r.data),
-  canAdd: () => api.get("/backup/can-add").then((r) => r.data),
+  all: () => grpc("BackupGetAll"),
+  status: (sourcePath: string) => grpc("BackupGetStatus", { sourcePath }),
+  add: (backup: any) => grpc("BackupAdd", backup),
+  remove: (sourcePath: string) => grpc("BackupRemove", { sourcePath }),
+  update: (backup: any) => grpc("BackupUpdate", backup),
+  setEnabled: (sourcePath: string, isEnabled: boolean) => grpc("BackupSetEnabled", { sourcePath, isEnabled }),
+  restartWalk: (sourcePath: string) => grpc("BackupRestartWalkingThrough", { sourcePath }),
+  canAdd: () => grpc("CanAddMoreBackups"),
 };
 
 // ==================== Webhooks ====================
 export const webhookApi = {
-  template: () => api.get("/webhook/template").then((r) => r.data),
-  list: () => api.get("/webhook/list").then((r) => r.data),
-  add: (fileName: string, content: string) =>
-    api.post("/webhook/add", { fileName, content }).then((r) => r.data),
-  remove: (fileName: string) => api.post("/webhook/remove", { fileName }).then((r) => r.data),
-  change: (fileName: string, content: string) =>
-    api.post("/webhook/change", { fileName, content }).then((r) => r.data),
+  template: () => grpc("GetWebhookConfigTemplate"),
+  list: () => grpc("GetWebhookConfigs"),
+  add: (fileName: string, content: string) => grpc("AddWebhookConfig", { fileName, content }),
+  remove: (fileName: string) => grpc("RemoveWebhookConfig", { fileName }),
+  change: (fileName: string, content: string) => grpc("ChangeWebhookConfig", { fileName, content }),
 };
 
 // ==================== DAV ====================
 export const davApi = {
-  addUser: (req: any) => api.post("/dav/user/add", req).then((r) => r.data),
-  removeUser: (userName: string) => api.post("/dav/user/remove", { userName }).then((r) => r.data),
-  modifyUser: (req: any) => api.post("/dav/user/modify", req).then((r) => r.data),
-  getUser: (userName: string) => api.get("/dav/user", { params: { userName } }).then((r) => r.data),
-  config: () => api.get("/dav/config").then((r) => r.data),
-  setConfig: (req: any) => api.post("/dav/config", req).then((r) => r.data),
+  addUser: (req: any) => grpc("AddDavUser", req),
+  removeUser: (userName: string) => grpc("RemoveDavUser", { userName }),
+  modifyUser: (req: any) => grpc("ModifyDavUser", req),
+  getUser: (userName: string) => grpc("GetDavUser", { userName }),
+  config: () => grpc("GetDavServerConfig"),
+  setConfig: (req: any) => grpc("SetDavServerConfig", req),
 };
 
 // ==================== Tokens ====================
 export const tokenApi = {
-  create: (req: any) => api.post("/tokens/create", req).then((r) => r.data),
-  modify: (req: any) => api.post("/tokens/modify", req).then((r) => r.data),
-  remove: (token: string) => api.post("/tokens/remove", { token }).then((r) => r.data),
-  list: () => api.get("/tokens/list").then((r) => r.data),
-  info: (token: string) => api.get("/tokens/info", { params: { token } }).then((r) => r.data),
+  create: (req: any) => grpc("CreateToken", req),
+  modify: (req: any) => grpc("ModifyToken", req),
+  remove: (token: string) => grpc("RemoveToken", { token }),
+  list: () => grpc("ListTokens"),
+  info: (token: string) => grpc("GetApiTokenInfo", { token }),
 };
 
 // ==================== Web Server ====================
 export const webServerApi = {
-  config: () => api.get("/web-server/config").then((r) => r.data),
-  setConfig: (req: any) => api.post("/web-server/config", req).then((r) => r.data),
-  generateCert: (restartServers = true) =>
-    api.post("/web-server/generate-cert", { restartServers }).then((r) => r.data),
+  config: () => grpc("GetWebServerConfig"),
+  setConfig: (req: any) => grpc("SetWebServerConfig", req),
+  generateCert: (restartServers = true) => grpc("GenerateSelfSignedCert", { restartServers }),
 };
 
 // ==================== Shared Links ====================
 export const sharedLinkApi = {
-  add: (sharedLinkUrl: string, toFolder: string, sharedPassword?: string) =>
-    api.post("/shared-link/add", { sharedLinkUrl, sharedPassword, toFolder }).then((r) => r.data),
+  add: (sharedLinkUrl: string, toFolder: string, sharedPassword?: string) => grpc("AddSharedLink", { sharedLinkUrl, sharedPassword, toFolder }),
 };
 
 // ==================== Sync ====================
 export const syncApi = {
-  fileChanges: (path: string) => api.post("/sync/file-changes", { path }).then((r) => r.data),
-  startListener: (path: string) => api.post("/sync/start-listener", { path }).then((r) => r.data),
-  stopListener: (path: string) => api.post("/sync/stop-listener", { path }).then((r) => r.data),
-  walkThrough: (path: string) => api.post("/walk-through", { path }).then((r) => r.data),
+  fileChanges: (path: string) => grpc("SyncFileChangesFromCloud", { path }),
+  startListener: (path: string) => grpc("StartCloudEventListener", { path }),
+  stopListener: (path: string) => grpc("StopCloudEventListener", { path }),
+  walkThrough: (path: string) => grpc("WalkThroughFolderTest", { path }),
 };
 
 // ==================== Update ====================
 export const updateApi = {
-  check: () => api.get("/update/check").then((r) => r.data),
-  has: () => api.get("/update/has").then((r) => r.data),
-  download: () => api.post("/update/download").then((r) => r.data),
-  system: () => api.post("/update/system").then((r) => r.data),
+  check: () => grpc("CheckUpdate"),
+  has: () => grpc("HasUpdate"),
+  download: () => grpc("DownloadUpdate"),
+  system: () => grpc("UpdateSystem"),
 };
 
 // ==================== Misc ====================
 export const miscApi = {
-  promotions: () => api.get("/promotions").then((r) => r.data),
-  promotionsByCloud: (cloudName: string) =>
-    api.get("/promotions/by-cloud", { params: { cloudName } }).then((r) => r.data),
-  plans: () => api.get("/plans").then((r) => r.data),
-  joinPlan: (planId: string, couponCode?: string) =>
-    api.post("/plans/join", { planId, couponCode }).then((r) => r.data),
-  balanceLog: () => api.get("/balance-log").then((r) => r.data),
-  referralCode: () => api.get("/referral-code").then((r) => r.data),
-  checkActivationCode: (code: string) => api.post("/check-activation-code", { code }).then((r) => r.data),
-  activatePlan: (code: string) => api.post("/activate-plan", { code }).then((r) => r.data),
-  checkCoupon: (planId: string, couponCode: string) =>
-    api.post("/check-coupon", { planId, couponCode }).then((r) => r.data),
-  storeQuote: (productId: string, couponCode?: string) =>
-    api.post("/store/quote", { productId, couponCode }).then((r) => r.data),
-  storeVerify: (req: any) => api.post("/store/verify", req).then((r) => r.data),
+  promotions: () => grpc("GetPromotions"),
+  promotionsByCloud: (cloudName: string) => grpc("GetPromotionsByCloud", { cloudName }),
+  plans: () => grpc("GetCloudDrivePlans"),
+  joinPlan: (planId: string, couponCode?: string) => grpc("JoinPlan", { planId, couponCode }),
+  balanceLog: () => grpc("GetBalanceLog"),
+  referralCode: () => grpc("GetReferralCode"),
+  checkActivationCode: (code: string) => grpc("CheckActivationCode", { code }),
+  activatePlan: (code: string) => grpc("ActivatePlan", { code }),
 };
-
-export { api };

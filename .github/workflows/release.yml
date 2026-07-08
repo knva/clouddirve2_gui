@@ -33,11 +33,6 @@ jobs:
       - name: Install frontend dependencies
         run: npm install
 
-      - name: Install backend dependencies
-        run: |
-          cd backend
-          npm install
-
       - name: Download proto file
         run: node download-proto.cjs || true
         shell: bash
@@ -53,17 +48,16 @@ jobs:
           releaseBody: |
             ## HappyCD2 ${{ github.ref_name }}
 
-            CloudDrive2 GUI 管理器
+            CloudDrive2 GUI 管理器 — 原生 gRPC 客户端，无需 Node.js！
 
             ### 下载说明
             - **安装版**: 下载 `.exe`（NSIS）或 `.msi` 安装包，双击安装即可
             - **绿色便携版**: 下载 `HappyCD2-Portable-x64.zip`，解压后运行 `HappyCD2.exe`，无需安装
-            - 便携版和安装版都需要系统已安装 Node.js 运行时
 
             ### 系统要求
             - Windows 10/11 (64位)
-            - Node.js 18+ (用于后端服务)
             - CloudDrive2 服务端运行中
+            - **无需 Node.js** — 完全原生编译，gRPC 直接内置
 
             ### 使用方法
             1. 下载应用（安装版或便携版）
@@ -72,9 +66,11 @@ jobs:
             4. 首次使用请前往「设置 → 连接配置」配置服务器地址和 API Key
             5. 开始管理你的云盘文件
 
-            ### 新功能
-            - 📋 剪贴板监听：自动捕获 magnet/ed2k 链接，支持单/批量推送离线下载
-            - 🔑 连接配置：在设置页面直接配置 API Key 和服务器地址
+            ### v1.0.2 更新
+            - 🚀 **移除 Node.js 依赖** — 使用 Rust 原生 gRPC 客户端，无需安装 Node.js
+            - 🔧 修复首次运行 UNAUTHENTICATED 错误，正确显示登录界面
+            - 📦 便携版不再需要 backend 文件夹，单个 exe 即可运行
+            - ⚡ 性能提升 — 原生 gRPC 通信，减少中间层
           releaseDraft: false
           prerelease: false
           args: --target x86_64-pc-windows-msvc
@@ -84,55 +80,25 @@ jobs:
         shell: pwsh
         run: |
           Write-Host "Building portable version..."
-          
-          # Define paths
           $exePath = "src-tauri\target\x86_64-pc-windows-msvc\release\happycd2.exe"
           $portableDir = "HappyCD2-Portable"
-          
-          # Create portable directory structure
           New-Item -ItemType Directory -Force -Path $portableDir
-          New-Item -ItemType Directory -Force -Path "$portableDir\backend"
-          
-          # Copy the exe
           Copy-Item $exePath "$portableDir\HappyCD2.exe"
-          
-          # Copy backend files
-          Copy-Item "backend\server.js" "$portableDir\backend\"
-          Copy-Item "backend\grpc-client.js" "$portableDir\backend\"
-          Copy-Item "backend\package.json" "$portableDir\backend\"
-          Copy-Item "backend\package-lock.json" "$portableDir\backend\"
-          
-          # Copy proto file (to backend dir and root for compatibility)
-          Copy-Item "clouddrive.proto" "$portableDir\backend\"
-          Copy-Item "clouddrive.proto" "$portableDir\"
-          
-          # Install backend dependencies in the portable backend dir
-          Push-Location "$portableDir\backend"
-          npm install --production
-          Pop-Location
-          
-          # Create a README
           @"
-          HappyCD2 便携版
-          ===============
-          
+          HappyCD2 便携版 v1.0.2
+          ========================
+
           使用方法:
-          1. 确保系统已安装 Node.js 18+
-          2. 确保 CloudDrive2 服务端正在运行
-          3. 双击 HappyCD2.exe 启动
-          4. 首次使用请前往「设置 → 连接配置」配置服务器地址和 API Key
-          
-          注意:
-          - 请保持 exe 和 backend 文件夹在同一目录
-          - 不要删除 backend 文件夹中的任何文件
-          - 此便携版不会写入注册表，可随时删除整个文件夹卸载
-          
-          CloudDrive2 gRPC API - Tauri + React + Node.js
+          1. 确保 CloudDrive2 服务端正在运行
+          2. 双击 HappyCD2.exe 启动
+          3. 首次使用请前往「设置 → 连接配置」配置服务器地址和 API Key
+
+          特点:
+          - 完全原生编译，无需 Node.js
+          - 不写入注册表，可随时删除整个文件夹卸载
+          - gRPC 客户端内置，直接连接 CloudDrive2 服务端
           "@ | Out-File -FilePath "$portableDir\README.txt" -Encoding UTF8
-          
-          # Create zip
           Compress-Archive -Path $portableDir -DestinationPath "HappyCD2-Portable-x64.zip" -Force
-          
           Write-Host "Portable version created: HappyCD2-Portable-x64.zip"
 
       - name: Upload portable zip to release

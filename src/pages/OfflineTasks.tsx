@@ -1,14 +1,20 @@
 import React, { useState, useEffect, useCallback } from "react";
 import { useApp } from "../contexts/AppContext";
+import { useClipboard, type PendingLink } from "../contexts/ClipboardContext";
 import { offlineApi, cloudApi } from "../api/client";
 import { formatSize, formatDate } from "../utils";
 import type { OfflineFile } from "../types";
 import {
   Plus, Trash2, RefreshCw, Loader2, Download, Link2, X, Magnet,
+  ClipboardCheck, ClipboardList, CheckSquare, Square, Send, Zap,
 } from "lucide-react";
 
 export default function OfflineTasks() {
   const { showToast } = useApp();
+  const {
+    clipboardMonitorEnabled, setClipboardMonitorEnabled,
+    pendingLinks, removePendingLink, clearPendingLinks,
+  } = useClipboard();
   const [clouds, setClouds] = useState<any[]>([]);
   const [selectedCloud, setSelectedCloud] = useState<string>("");
   const [offlineFiles, setOfflineFiles] = useState<OfflineFile[]>([]);
@@ -17,6 +23,9 @@ export default function OfflineTasks() {
   const [showAdd, setShowAdd] = useState(false);
   const [addUrl, setAddUrl] = useState("");
   const [addFolder, setAddFolder] = useState("/");
+  const [selectedLinks, setSelectedLinks] = useState<Set<string>>(new Set());
+  const [pushFolder, setPushFolder] = useState("/");
+  const [pushing, setPushing] = useState(false);
 
   const loadClouds = useCallback(async () => {
     try {
@@ -92,6 +101,91 @@ export default function OfflineTasks() {
     }
   };
 
+  // Push a single pending link to offline download
+  const handlePushSingle = async (link: PendingLink) => {
+    try {
+      await offlineApi.add(link.url, pushFolder);
+      showToast("success", `已推送: ${link.url.substring(0, 50)}...`);
+      removePendingLink(link.id);
+      loadOfflineFiles();
+    } catch (e: any) {
+      showToast("error", `推送失败: ${e.message}`);
+    }
+  };
+
+  // Push selected pending links in batch
+  const handlePushBatch = async () => {
+    const linksToPush = pendingLinks.filter((l) => selectedLinks.has(l.id));
+    if (linksToPush.length === 0) {
+      showToast("warning", "请先选择要推送的链接");
+      return;
+    }
+    setPushing(true);
+    let successCount = 0;
+    let failCount = 0;
+    for (const link of linksToPush) {
+      try {
+        await offlineApi.add(link.url, pushFolder);
+        removePendingLink(link.id);
+        successCount++;
+      } catch {
+        failCount++;
+      }
+    }
+    setPushing(false);
+    setSelectedLinks(new Set());
+    if (successCount > 0) {
+      showToast("success", `成功推送 ${successCount} 个链接${failCount > 0 ? `，失败 ${failCount} 个` : ""}`);
+    } else {
+      showToast("error", `全部推送失败 (${failCount} 个)`);
+    }
+    loadOfflineFiles();
+  };
+
+  // Push all pending links
+  const handlePushAll = async () => {
+    if (pendingLinks.length === 0) {
+      showToast("warning", "没有待推送的链接");
+      return;
+    }
+    setPushing(true);
+    let successCount = 0;
+    let failCount = 0;
+    for (const link of [...pendingLinks]) {
+      try {
+        await offlineApi.add(link.url, pushFolder);
+        removePendingLink(link.id);
+        successCount++;
+      } catch {
+        failCount++;
+      }
+    }
+    setPushing(false);
+    if (successCount > 0) {
+      showToast("success", `成功推送 ${successCount} 个链接${failCount > 0 ? `，失败 ${failCount} 个` : ""}`);
+    } else {
+      showToast("error", `全部推送失败 (${failCount} 个)`);
+    }
+    loadOfflineFiles();
+  };
+
+  const toggleSelect = (id: string) => {
+    setSelectedLinks((prev) => {
+      const next = new Set(prev);
+      if (next.has(id)) next.delete(id);
+      else next.add(id);
+      return next;
+    });
+  };
+
+  const toggleSelectAll = () => {
+    if (selectedLinks.size === pendingLinks.length) {
+      setSelectedLinks(new Set());
+    } else {
+      setSelectedLinks(new Set(pendingLinks.map((l) => l.id)));
+    }
+  };
+
   const statusLabels: Record<number, { label: string; color: string }> = {
     0: { label: "初始化", color: "text-slate-400" },
     1: { label: "下载中", color: "text-blue-400" },
@@ -130,6 +224,140 @@ export default function OfflineTasks() {
         <button onClick={() => handleClear("Finished")} className="px-3 py-2 bg-slate-700 hover:bg-slate-600 text-white rounded text-sm">清除已完成</button>
         <button onClick={() => handleClear("Error")} className="px-3 py-2 bg-slate-700 hover:bg-slate-600 text-white rounded text-sm">清除错误</button>
         <button onClick={() => handleClear("All")} className="px-3 py-2 bg-red-600 hover:bg-red-700 text-white rounded text-sm">清除全部</button>
+      </div>
+
+      {/* Clipboard Monitor Toggle + Pending Links */}
+      <div className="mb-4 glass rounded-xl p-4">
+        <div className="flex items-center justify-between mb-3">
+          <div className="flex items-center gap-3">
+            <ClipboardList className="w-5 h-5 text-blue-400" />
+            <h3 className="text-sm font-semibold text-white">剪贴板监听</h3>
+            <span className="text-xs text-slate-500">
+              自动捕获 magnet / ed2k 链接
+            </span>
+          </div>
+          <label className="flex items-center gap-2 cursor-pointer">
+            <span className={`text-xs ${clipboardMonitorEnabled ? "text-green-400" : "text-slate-500"}`}>
+              {clipboardMonitorEnabled ? "已开启" : "已关闭"}
+            </span>
+            <div
+              onClick={() => setClipboardMonitorEnabled(!clipboardMonitorEnabled)}
+              className={`relative w-11 h-6 rounded-full transition-colors ${clipboardMonitorEnabled ? "bg-blue-600" : "bg-slate-700"}`}
+            >
+              <div
+                className={`absolute top-0.5 left-0.5 w-5 h-5 bg-white rounded-full transition-transform ${clipboardMonitorEnabled ? "translate-x-5" : ""}`}
+              />
+            </div>
+          </label>
+        </div>
+
+        {pendingLinks.length > 0 && (
+          <>
+            {/* Push controls */}
+            <div className="flex items-center gap-2 mb-3 flex-wrap">
+              <input
+                type="text"
+                value={pushFolder}
+                onChange={(e) => setPushFolder(e.target.value)}
+                placeholder="保存到文件夹"
+                className="flex-1 min-w-[200px] px-3 py-1.5 bg-slate-800 rounded-lg text-white text-xs border border-slate-700 focus:border-blue-500 focus:outline-none"
+              />
+              <button
+                onClick={toggleSelectAll}
+                className="flex items-center gap-1.5 px-3 py-1.5 bg-slate-700 hover:bg-slate-600 text-white rounded-lg text-xs"
+              >
+                {selectedLinks.size === pendingLinks.length && pendingLinks.length > 0 ? (
+                  <CheckSquare className="w-3.5 h-3.5" />
+                ) : (
+                  <Square className="w-3.5 h-3.5" />
+                )}
+                {selectedLinks.size === pendingLinks.length && pendingLinks.length > 0 ? "取消全选" : "全选"}
+              </button>
+              <button
+                onClick={handlePushBatch}
+                disabled={pushing || selectedLinks.size === 0}
+                className="flex items-center gap-1.5 px-3 py-1.5 bg-blue-600 hover:bg-blue-700 text-white rounded-lg text-xs disabled:opacity-50"
+              >
+                {pushing ? <Loader2 className="w-3.5 h-3.5 animate-spin" /> : <Send className="w-3.5 h-3.5" />}
+                推送选中 ({selectedLinks.size})
+              </button>
+              <button
+                onClick={handlePushAll}
+                disabled={pushing}
+                className="flex items-center gap-1.5 px-3 py-1.5 bg-green-600 hover:bg-green-700 text-white rounded-lg text-xs disabled:opacity-50"
+              >
+                {pushing ? <Loader2 className="w-3.5 h-3.5 animate-spin" /> : <Zap className="w-3.5 h-3.5" />}
+                全部推送 ({pendingLinks.length})
+              </button>
+              <button
+                onClick={clearPendingLinks}
+                className="flex items-center gap-1.5 px-3 py-1.5 bg-red-600/80 hover:bg-red-600 text-white rounded-lg text-xs"
+              >
+                <Trash2 className="w-3.5 h-3.5" /> 清空列表
+              </button>
+            </div>
+
+            {/* Pending links list */}
+            <div className="space-y-1.5 max-h-48 overflow-auto">
+              {pendingLinks.map((link) => (
+                <div
+                  key={link.id}
+                  className="flex items-center gap-2 p-2 bg-slate-800/50 rounded-lg hover:bg-slate-800/80 transition-colors"
+                >
+                  <button
+                    onClick={() => toggleSelect(link.id)}
+                    className="text-slate-400 hover:text-white"
+                  >
+                    {selectedLinks.has(link.id) ? (
+                      <CheckSquare className="w-4 h-4 text-blue-400" />
+                    ) : (
+                      <Square className="w-4 h-4" />
+                    )}
+                  </button>
+                  <div className="flex items-center gap-1.5 flex-shrink-0">
+                    {link.type === "magnet" ? (
+                      <Magnet className="w-3.5 h-3.5 text-purple-400" />
+                    ) : (
+                      <Link2 className="w-3.5 h-3.5 text-cyan-400" />
+                    )}
+                    <span className={`text-xs font-medium ${link.type === "magnet" ? "text-purple-400" : "text-cyan-400"}`}>
+                      {link.type === "magnet" ? "磁力" : "ED2K"}
+                    </span>
+                  </div>
+                  <div className="flex-1 min-w-0">
+                    <div className="text-xs text-slate-300 truncate" title={link.url}>{link.url}</div>
+                    <div className="text-xs text-slate-600">{new Date(link.addedAt).toLocaleTimeString("zh-CN")}</div>
+                  </div>
+                  <button
+                    onClick={() => handlePushSingle(link)}
+                    className="flex items-center gap-1 px-2 py-1 bg-blue-600/80 hover:bg-blue-600 text-white rounded text-xs whitespace-nowrap"
+                    title="推送离线下载"
+                  >
+                    <Send className="w-3 h-3" /> 推送
+                  </button>
+                  <button
+                    onClick={() => removePendingLink(link.id)}
+                    className="p-1 text-red-400 hover:text-red-300"
+                    title="移除"
+                  >
+                    <X className="w-3.5 h-3.5" />
+                  </button>
+                </div>
+              ))}
+            </div>
+          </>
+        )}
+
+        {pendingLinks.length === 0 && clipboardMonitorEnabled && (
+          <div className="flex items-center gap-2 text-xs text-slate-500 py-2">
+            <ClipboardCheck className="w-4 h-4 text-green-400" />
+            监听中... 复制 magnet 或 ed2k 链接后将自动出现在此列表
+          </div>
+        )}
+
+        {pendingLinks.length === 0 && !clipboardMonitorEnabled && (
+          <p className="text-xs text-slate-500 py-2">开启剪贴板监听后，复制的 magnet/ed2k 链接将自动添加到待离线下载列表</p>
+        )}
       </div>
 
       {/* Quota */}

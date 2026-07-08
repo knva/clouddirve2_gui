@@ -1,11 +1,29 @@
 import grpc from '@grpc/grpc-js';
 import protoLoader from '@grpc/proto-loader';
 import path from 'path';
+import fs from 'fs';
 import { fileURLToPath } from 'url';
 
 const __dirname = path.dirname(fileURLToPath(import.meta.url));
 
-const PROTO_PATH = path.join(__dirname, '..', 'clouddrive.proto');
+// Find the proto file in multiple possible locations
+function findProtoPath() {
+  const candidates = [
+    path.join(__dirname, '..', 'clouddrive.proto'),    // Development: project root
+    path.join(__dirname, 'clouddrive.proto'),           // Production: bundled in resource dir
+    path.join(__dirname, '..', 'resources', 'clouddrive.proto'), // Alternative production path
+    path.join(process.cwd(), 'clouddrive.proto'),       // Fallback: current working dir
+  ];
+  for (const p of candidates) {
+    try {
+      if (fs.existsSync(p)) return p;
+    } catch {}
+  }
+  // Default to the first candidate (original behavior)
+  return path.join(__dirname, '..', 'clouddrive.proto');
+}
+
+const PROTO_PATH = findProtoPath();
 
 const packageDefinition = protoLoader.loadSync(PROTO_PATH, {
   keepCase: false,

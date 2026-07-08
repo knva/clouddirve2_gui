@@ -4,12 +4,12 @@ import { authApi, systemApi } from "../api/client";
 import { HardDrive, Loader2, Server, User, Lock, KeyRound, ShieldCheck } from "lucide-react";
 
 export default function Login() {
-  const { setIsLoggedIn, serverUrl, setServerUrl, refreshSystemInfo, refreshAccountStatus, showToast } = useApp();
+  const { setIsLoggedIn, serverUrl, setServerUrl, apiKey, setApiKey, refreshSystemInfo, refreshAccountStatus, showToast } = useApp();
   const [mode, setMode] = useState<"login" | "register" | "token">("login");
   const [userName, setUserName] = useState("");
   const [password, setPassword] = useState("");
   const [totpCode, setTotpCode] = useState("");
-  const [token, setToken] = useState("");
+  const [token, setToken] = useState(apiKey || "");
   const [loading, setLoading] = useState(false);
   const [showTotp, setShowTotp] = useState(false);
   const [backendOk, setBackendOk] = useState(false);
@@ -33,6 +33,7 @@ export default function Login() {
       
       if (tokenResult.success && tokenResult.token) {
         await systemApi.setToken(tokenResult.token);
+        setApiKey(tokenResult.token);
         showToast("success", "登录成功！");
         setIsLoggedIn(true);
         await refreshSystemInfo();
@@ -69,6 +70,7 @@ export default function Login() {
       const result = await authApi.login2FA(userName, password, totpCode);
       if (result.token) {
         await systemApi.setToken(result.token);
+        setApiKey(result.token);
         showToast("success", "登录成功！");
         setIsLoggedIn(true);
         await refreshSystemInfo();
@@ -109,6 +111,7 @@ export default function Login() {
     setLoading(true);
     try {
       await systemApi.setToken(token);
+      setApiKey(token);
       const info = await systemApi.getSystemInfo();
       if (info.IsLogin) {
         showToast("success", "Token 登录成功！");

@@ -7,7 +7,7 @@ import {
   HardDrive, Globe, Key, ShieldCheck, Trash2, Plus, X, Download,
 } from "lucide-react";
 
-type Tab = "general" | "cache" | "dav" | "tokens" | "webserver";
+type Tab = "connection" | "general" | "cache" | "dav" | "tokens" | "webserver";
 
 export default function Settings() {
   const { showToast } = useApp();
@@ -45,6 +45,7 @@ export default function Settings() {
   };
 
   const tabs = [
+    { id: "connection", label: "连接配置", icon: <Server className="w-4 h-4" /> },
     { id: "general", label: "通用设置", icon: <SettingsIcon className="w-4 h-4" /> },
     { id: "cache", label: "磁盘缓存", icon: <Database className="w-4 h-4" /> },
     { id: "dav", label: "WebDAV", icon: <Server className="w-4 h-4" /> },
@@ -65,6 +66,7 @@ export default function Settings() {
       </div>
 
       <div className="flex-1 overflow-auto">
+        {tab === "connection" && <ConnectionSettings />}
         {tab === "general" && (
           <GeneralSettings settings={settings} setSettings={setSettings} loading={loading} saving={saving} onSave={handleSave} onReload={loadSettings} />
         )}
@@ -72,6 +74,117 @@ export default function Settings() {
         {tab === "dav" && <DavSettings />}
         {tab === "tokens" && <TokenSettings />}
         {tab === "webserver" && <WebServerSettings />}
+      </div>
+    </div>
+  );
+}
+
+function ConnectionSettings() {
+  const { showToast, serverUrl, setServerUrl, apiKey, setApiKey, applyConnectionConfig, refreshSystemInfo } = useApp();
+  const [urlInput, setUrlInput] = useState(serverUrl);
+  const [keyInput, setKeyInput] = useState(apiKey);
+  const [saving, setSaving] = useState(false);
+  const [testing, setTesting] = useState(false);
+  const [showKey, setShowKey] = useState(false);
+
+  const handleSave = async () => {
+    setSaving(true);
+    try {
+      setServerUrl(urlInput);
+      setApiKey(keyInput);
+      await applyConnectionConfig(urlInput, keyInput);
+      await refreshSystemInfo();
+      showToast("success", "连接配置已保存并应用");
+    } catch (e: any) {
+      showToast("error", `保存失败: ${e.message}`);
+    } finally {
+      setSaving(false);
+    }
+  };
+
+  const handleTest = async () => {
+    setTesting(true);
+    try {
+      await applyConnectionConfig(urlInput, keyInput);
+      const info = await systemApi.getSystemInfo();
+      if (info.IsLogin) {
+        showToast("success", `连接成功！用户: ${info.UserName || "已登录"}`);
+      } else {
+        showToast("warning", "已连接到服务器，但未登录（请检查 API Key）");
+      }
+    } catch (e: any) {
+      showToast("error", `连接失败: ${e.message}`);
+    } finally {
+      setTesting(false);
+    }
+  };
+
+  const handleClearKey = () => {
+    setKeyInput("");
+    setApiKey("");
+    showToast("info", "API Key 已清除，请保存以生效");
+  };
+
+  return (
+    <div className="max-w-2xl space-y-6">
+      <Section title="gRPC 服务器配置">
+        <Field label="CloudDrive2 gRPC 服务器地址">
+          <input
+            type="text"
+            value={urlInput}
+            onChange={(e) => setUrlInput(e.target.value)}
+            placeholder="http://localhost:19798"
+            className="input"
+          />
+        </Field>
+        <p className="text-xs text-slate-500">CloudDrive2 默认 gRPC 端口为 19798，如果服务端运行在其他地址请修改。</p>
+      </Section>
+
+      <Section title="API Key (Bearer Token)">
+        <Field label="API Key / Bearer Token">
+          <div className="flex gap-2">
+            <input
+              type={showKey ? "text" : "password"}
+              value={keyInput}
+              onChange={(e) => setKeyInput(e.target.value)}
+              placeholder="输入 Bearer Token（可留空，使用用户名密码登录）"
+              className="flex-1 input"
+            />
+            <button
+              onClick={() => setShowKey(!showKey)}
+              className="px-3 py-2 bg-slate-700 hover:bg-slate-600 text-slate-300 rounded-lg text-sm whitespace-nowrap"
+            >
+              {showKey ? "隐藏" : "显示"}
+            </button>
+            <button
+              onClick={handleClearKey}
+              className="px-3 py-2 bg-red-600/80 hover:bg-red-600 text-white rounded-lg text-sm whitespace-nowrap"
+            >
+              清除
+            </button>
+          </div>
+        </Field>
+        <p className="text-xs text-slate-500">
+          API Key 是 CloudDrive2 的 Bearer Token，用于身份验证。可以通过登录页面获取，或在 CloudDrive2 Web 界面中生成。
+          配置后所有功能将使用此 Key 进行认证。留空则需通过登录页面使用用户名密码登录。
+        </p>
+      </Section>
+
+      <div className="flex gap-3">
+        <button
+          onClick={handleSave}
+          disabled={saving}
+          className="flex items-center gap-2 px-6 py-2.5 bg-blue-600 hover:bg-blue-700 text-white rounded-lg text-sm font-medium disabled:opacity-50"
+        >
+          {saving ? <Loader2 className="w-4 h-4 animate-spin" /> : <Save className="w-4 h-4" />} 保存并应用
+        </button>
+        <button
+          onClick={handleTest}
+          disabled={testing}
+          className="flex items-center gap-2 px-4 py-2.5 bg-slate-700 hover:bg-slate-600 text-white rounded-lg text-sm disabled:opacity-50"
+        >
+          {testing ? <Loader2 className="w-4 h-4 animate-spin" /> : <RefreshCw className="w-4 h-4" />} 测试连接
+        </button>
       </div>
     </div>
   );

@@ -1,5 +1,6 @@
 import React, { useState, useEffect } from "react";
 import { AppProvider, useApp } from "./contexts/AppContext";
+import { ClipboardProvider } from "./contexts/ClipboardContext";
 import ToastContainer from "./components/Toast";
 import Login from "./pages/Login";
 import FileBrowser from "./pages/FileBrowser";
@@ -155,8 +156,10 @@ function MainApp() {
 export default function App() {
   return (
     <AppProvider>
-      <MainApp />
-      <ToastContainer />
+      <ClipboardProvider>
+        <MainApp />
+        <ToastContainer />
+      </ClipboardProvider>
     </AppProvider>
   );
 }

@@ -31,3 +31,12 @@ export async function getPlatform(): Promise<string> {
     return "web";
   }
 }
+
+/// Read the current text content of the system clipboard.
+export async function readClipboard(): Promise<string> {
+  try {
+    return await invoke<string>("read_clipboard");
+  } catch {
+    return "";
+  }
+}

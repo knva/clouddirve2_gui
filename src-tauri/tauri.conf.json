@@ -1,7 +1,7 @@
 {
   "$schema": "https://raw.githubusercontent.com/nicehash/tauri/dev/crates/tauri-config-schema/schema.json",
   "productName": "HappyCD2",
-  "version": "1.0.0",
+  "version": "1.0.1",
   "identifier": "com.happycd2.app",
   "build": {
     "frontendDist": "../dist",
@@ -40,7 +40,8 @@
       "../backend/server.js",
       "../backend/grpc-client.js",
       "../backend/package.json",
-      "../backend/package-lock.json"
+      "../backend/package-lock.json",
+      "../clouddrive.proto"
     ],
     "externalBin": []
   }

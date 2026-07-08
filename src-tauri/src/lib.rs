@@ -120,39 +120,69 @@ fn get_platform() -> String {
     std::env::consts::OS.to_string()
 }
 
-/// Start the Node.js backend server.
-/// In development, it runs `npm run backend` from the project root.
-/// In production (bundled), it runs `node server.js` from the resources directory.
-fn start_backend(app: &tauri::App) -> Option<std::process::Child> {
-    // Try production mode first: look for bundled server.js in resources
-    let resource_dir = app.path().resource_dir().ok()?;
-    let server_js = resource_dir.join("server.js");
+/// Read the current text content of the system clipboard.
+/// Returns an empty string if the clipboard is empty or not text.
+#[tauri::command]
+fn read_clipboard() -> Result<String, String> {
+    let mut clipboard = arboard::Clipboard::new()
+        .map_err(|e| format!("无法访问剪贴板: {}", e))?;
+    clipboard.get_text().or_else(|_| Ok(String::new()))
+}
 
-    if server_js.exists() {
-        // Production mode: run node server.js with the resource dir as cwd
-        let npm_dir = resource_dir.join("node_modules");
-        if !npm_dir.exists() {
-            // Install dependencies first
-            let _ = Command::new("npm")
-                .arg("install")
-                .arg("--production")
-                .current_dir(&resource_dir)
-                .stdout(Stdio::null())
-                .stderr(Stdio::null())
-                .status();
-        }
-
-        let child = Command::new("node")
-            .arg("server.js")
-            .current_dir(&resource_dir)
-            .stdout(Stdio::null())
-            .stderr(Stdio::null())
-            .spawn()
-            .ok();
-        return child;
+/// Try to start the Node.js backend from a given directory that contains server.js.
+fn try_start_backend_from(dir: &std::path::Path) -> Option<std::process::Child> {
+    let server_js = dir.join("server.js");
+    if !server_js.exists() {
+        return None;
     }
 
-    // Development mode: run npm run backend from the project root
+    // Ensure node_modules are installed
+    let npm_dir = dir.join("node_modules");
+    if !npm_dir.exists() {
+        let _ = Command::new("npm")
+            .arg("install")
+            .arg("--production")
+            .current_dir(dir)
+            .stdout(Stdio::null())
+            .stderr(Stdio::null())
+            .status();
+    }
+
+    Command::new("node")
+        .arg("server.js")
+        .current_dir(dir)
+        .stdout(Stdio::null())
+        .stderr(Stdio::null())
+        .spawn()
+        .ok()
+}
+
+/// Start the Node.js backend server.
+/// Tries: 1) bundled resources dir, 2) portable mode (exe's own dir), 3) development mode.
+fn start_backend(app: &tauri::App) -> Option<std::process::Child> {
+    // 1. Try production mode: look for bundled server.js in resources
+    if let Ok(resource_dir) = app.path().resource_dir() {
+        if let Some(child) = try_start_backend_from(&resource_dir) {
+            return Some(child);
+        }
+    }
+
+    // 2. Try portable mode: look for server.js next to the executable
+    if let Ok(exe_path) = std::env::current_exe() {
+        if let Some(exe_dir) = exe_path.parent() {
+            // Check exe directory itself
+            if let Some(child) = try_start_backend_from(exe_dir) {
+                return Some(child);
+            }
+            // Check a "backend" subdirectory next to the exe
+            let backend_subdir = exe_dir.join("backend");
+            if let Some(child) = try_start_backend_from(&backend_subdir) {
+                return Some(child);
+            }
+        }
+    }
+
+    // 3. Development mode: run npm run backend from the project root
     let manifest_dir = std::env::var("CARGO_MANIFEST_DIR").unwrap_or_default();
     let project_root = if manifest_dir.is_empty() {
         std::path::PathBuf::from(".")
@@ -185,6 +215,7 @@ pub fn run() {
             check_available_players,
             open_in_system,
             get_platform,
+            read_clipboard,
         ])
         .setup(|app| {
             // Start the Node.js backend server

@@ -1,6 +1,6 @@
 # HappyCD2 - CloudDrive2 GUI 管理器
 
-一个基于 Tauri + React + Node.js 的 CloudDrive2 桌面图形界面管理器，通过 gRPC API 与 CloudDrive2 服务端通信，支持文件管理、任务管理、云盘挂载、离线下载等功能，并支持调用第三方播放器（VLC、PotPlayer 等）播放文件。
+一个基于 Tauri + React + Rust 的 CloudDrive2 桌面图形界面管理器（原生应用，无需 Node.js），通过 gRPC API 与 CloudDrive2 服务端通信，支持文件管理、任务管理、云盘挂载、离线下载、图片查看器、视频播放器等功能，并支持调用第三方播放器（VLC、PotPlayer 等）播放文件。
 
 ## 功能特性
 
@@ -12,18 +12,20 @@
 - **备份管理**：创建和管理文件备份任务
 - **系统设置**：配置缓存策略、WebDAV 服务、访问令牌、Web 服务器等
 - **系统监控**：查看系统运行信息、磁盘缓存统计、在线设备等
+- **内置播放器**：内置视频播放器，支持倍速播放、静音、全屏等，可配置默认播放器
+- **图片查看器**：支持缩放、旋转、幻灯片播放
 - **第三方播放器**：支持调用 VLC、PotPlayer、MPC-HC、MPV 播放视频文件
-- **账号管理**：修改密码、两步验证、会话管理
+- **主题切换**：支持夜间模式、日间模式、自动切换
+- **账号管理**：修改密码、两步验证、会话管理、会员等级显示
 
 ## 系统要求
 
 ### 运行环境
 - **操作系统**：Windows 10/11 (64位)
-- **Node.js**：18 或更高版本（用于后端服务）
 - **CloudDrive2 服务端**：需要运行中的 CloudDrive2 服务端
 
 ### 开发环境
-- [Node.js](https://nodejs.org/) 18+
+- [Node.js](https://nodejs.org/) 18+（仅用于前端构建）
 - [Rust](https://www.rust-lang.org/) (stable)
 - [Tauri CLI](https://tauri.app/) v2
 

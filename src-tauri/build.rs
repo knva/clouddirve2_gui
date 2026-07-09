@@ -10,4 +10,15 @@ fn main() {
         .expect("Failed to compile protos");
 
     println!("cargo:rerun-if-changed=../clouddrive.proto");
+
+    // Embed Windows manifest to enable Common Controls v6 (fixes TaskDialogIndirect error)
+    #[cfg(target_os = "windows")]
+    {
+        let mut res = winres::WindowsResource::new();
+        res.set_manifest(include_str!("app.manifest"));
+        if let Err(e) = res.compile() {
+            eprintln!("Warning: failed to compile Windows resource: {}", e);
+        }
+        println!("cargo:rerun-if-changed=app.manifest");
+    }
 }

@@ -3,7 +3,7 @@ import { useApp } from "../contexts/AppContext";
 import { fileApi, mountApi } from "../api/client";
 import { checkAvailablePlayers, launchPlayer, openInSystem } from "../api/tauri";
 import {
-  formatSize, formatDate, getFileType, isVideoFile, isAudioFile, parentPath, basename,
+  formatSize, formatDate, getFileType, isVideoFile, isAudioFile, isImageFile, parentPath, basename,
 } from "../utils";
 import type { CloudDriveFile } from "../types";
 import {
@@ -12,6 +12,7 @@ import {
   FileVideo, FileAudio, FileImage, File as FileIcon, Loader2, X, Eye, Link2, HardDrive,
   ChevronDown, List, Grid3x3, Clock,
 } from "lucide-react";
+import { ImageViewer, VideoPlayer, PlayerSelector, getDefaultVideoPlayer } from "../components/MediaViewer";
 
 const fileTypeIcons: Record<string, React.ReactNode> = {
   folder: <Folder className="w-5 h-5 text-blue-400" />,
@@ -40,6 +41,8 @@ export default function FileBrowser() {
   const [showMoveCopy, setShowMoveCopy] = useState<{ mode: "move" | "copy"; paths: string[] } | null>(null);
   const [showUnlock, setShowUnlock] = useState<string | null>(null);
   const [showPlayer, setShowPlayer] = useState<CloudDriveFile | null>(null);
+  const [showImageViewer, setShowImageViewer] = useState<{ files: CloudDriveFile[]; index: number } | null>(null);
+  const [showVideoPlayer, setShowVideoPlayer] = useState<{ file: CloudDriveFile; url: string } | null>(null);
   const [availablePlayers, setAvailablePlayers] = useState<string[]>([]);
   const [detailFile, setDetailFile] = useState<CloudDriveFile | null>(null);
   const [showAddSharedLink, setShowAddSharedLink] = useState(false);
@@ -95,9 +98,55 @@ export default function FileBrowser() {
       setCurrentPath(file.fullPathName);
       setSearchMode(false);
       setSearchResults([]);
+    } else if (isImageFile(file.name)) {
+      // Open image viewer
+      const allFiles = searchMode ? searchResults : files;
+      const imageFiles = allFiles.filter((f) => isImageFile(f.name) && !f.isDirectory);
+      const idx = imageFiles.findIndex((f) => f.fullPathName === file.fullPathName);
+      setShowImageViewer({ files: imageFiles, index: idx >= 0 ? idx : 0 });
+    } else if (isVideoFile(file.name) || isAudioFile(file.name)) {
+      // Open player selector or default player
+      handleMediaPlay(file);
     } else {
       // Show file details
       setDetailFile(file);
+    }
+  };
+
+  const handleMediaPlay = async (file: CloudDriveFile) => {
+    const defaultPlayer = getDefaultVideoPlayer();
+    // If default player is set (not "ask"), try it directly
+    if (defaultPlayer !== "ask") {
+      if (defaultPlayer === "internal") {
+        await openInternalVideoPlayer(file);
+      } else {
+        await handlePlay(file, defaultPlayer);
+      }
+      return;
+    }
+    // Otherwise show the selector
+    setShowPlayer(file);
+  };
+
+  const openInternalVideoPlayer = async (file: CloudDriveFile) => {
+    try {
+      const urlInfo = await fileApi.downloadUrl(file.fullPathName, false, false, false);
+      let url = urlInfo.directUrl;
+      if (!url && urlInfo.downloadUrlPath) {
+        const scheme = "http";
+        const host = "localhost:19798";
+        url = `${scheme}://${host}${urlInfo.downloadUrlPath
+          .replace("{SCHEME}", scheme)
+          .replace("{HOST}", host)
+          .replace("{PREVIEW}", "false")}`;
+      }
+      if (!url) {
+        showToast("error", "无法获取文件播放URL");
+        return;
+      }
+      setShowVideoPlayer({ file, url });
+    } catch (e: any) {
+      showToast("error", `获取播放URL失败: ${e.message}`);
     }
   };
 
@@ -236,6 +285,10 @@ export default function FileBrowser() {
     } catch (e: any) {
       showToast("error", `获取播放URL失败: ${e.message}`);
     }
+  };
+
+  const handlePlayInternal = async (file: CloudDriveFile) => {
+    await openInternalVideoPlayer(file);
   };
 
   // Sort files
@@ -591,13 +644,36 @@ export default function FileBrowser() {
         />
       )}
       {showPlayer && (
-        <PlayerModal
+        <PlayerSelector
           file={showPlayer}
           availablePlayers={availablePlayers}
+          isVideo={isVideoFile(showPlayer.name) || isAudioFile(showPlayer.name)}
           onClose={() => setShowPlayer(null)}
-          onPlay={(player: string) => {
-            handlePlay(showPlayer, player);
-            setShowPlayer(null);
+          onPlayInternal={() => handlePlayInternal(showPlayer)}
+          onPlayExternal={(player: string) => handlePlay(showPlayer, player)}
+        />
+      )}
+      {showImageViewer && (
+        <ImageViewer
+          files={showImageViewer.files}
+          startIndex={showImageViewer.index}
+          onClose={() => setShowImageViewer(null)}
+        />
+      )}
+      {showVideoPlayer && (
+        <VideoPlayer
+          file={showVideoPlayer.file}
+          url={showVideoPlayer.url}
+          onClose={() => {
+            setShowVideoPlayer(null);
+            // Close file reader to free server resources
+            fileApi.closeReader(showVideoPlayer.file.fullPathName).catch(() => {});
+          }}
+          onOpenExternal={() => {
+            const file = showVideoPlayer.file;
+            setShowVideoPlayer(null);
+            fileApi.closeReader(file.fullPathName).catch(() => {});
+            setShowPlayer(file);
           }}
         />
       )}
@@ -818,51 +894,6 @@ function UnlockModal({ onClose, onUnlock }: any) {
             取消
           </button>
         </div>
-      </div>
-    </Modal>
-  );
-}
-
-function PlayerModal({ file, availablePlayers, onClose, onPlay }: any) {
-  const playerLabels: Record<string, string> = {
-    vlc: "VLC 播放器",
-    potplayer: "PotPlayer",
-    "mpc-hc": "MPC-HC",
-    mpv: "MPV",
-  };
-  const playerIcons: Record<string, React.ReactNode> = {
-    vlc: <Play className="w-5 h-5 text-orange-400" />,
-    potplayer: <Play className="w-5 h-5 text-blue-400" />,
-    "mpc-hc": <Play className="w-5 h-5 text-green-400" />,
-    mpv: <Play className="w-5 h-5 text-purple-400" />,
-  };
-
-  return (
-    <Modal title="选择播放器" onClose={onClose}>
-      <div className="space-y-3">
-        <p className="text-sm text-slate-400">播放文件: <span className="text-slate-200">{file.name}</span></p>
-        {availablePlayers.length === 0 ? (
-          <p className="text-sm text-yellow-400">未检测到已安装的播放器，请安装 VLC 或 PotPlayer。</p>
-        ) : (
-          <div className="space-y-2">
-            {availablePlayers.map((player: string) => (
-              <button
-                key={player}
-                onClick={() => onPlay(player)}
-                className="w-full flex items-center gap-3 px-4 py-3 bg-slate-800 hover:bg-slate-700 rounded-lg transition-colors"
-              >
-                {playerIcons[player] || <Play className="w-5 h-5" />}
-                <span className="text-sm text-white">{playerLabels[player] || player}</span>
-              </button>
-            ))}
-          </div>
-        )}
-        <button
-          onClick={onClose}
-          className="w-full py-2 bg-slate-700 hover:bg-slate-600 text-white rounded-lg text-sm font-medium"
-        >
-          取消
-        </button>
       </div>
     </Modal>
   );

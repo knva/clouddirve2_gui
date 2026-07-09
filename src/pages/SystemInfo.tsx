@@ -4,7 +4,7 @@ import { systemApi, settingsApi, taskApi } from "../api/client";
 import { formatSize, formatSpeed, formatUptime, formatDate } from "../utils";
 import {
   Cpu, MemoryStick, Clock, HardDrive, Download, Upload, Server,
-  RefreshCw, Loader2, Power, AlertTriangle, Activity, Database, FolderTree,
+  RefreshCw, Loader2, Power, AlertTriangle, Activity, Database, Copy,
 } from "lucide-react";
 
 export default function SystemInfo() {
@@ -17,19 +17,18 @@ export default function SystemInfo() {
   const [loading, setLoading] = useState(true);
   const [devices, setDevices] = useState<any[]>([]);
 
-  const load = useCallback(async () => {
+  // Load static data (runtime info, task counts, cache, handles, devices) every 5s
+  const loadStatic = useCallback(async () => {
     setLoading(true);
     try {
-      const [rt, ri, tc, dcs, oh, od] = await Promise.all([
+      const [rt, tc, dcs, oh, od] = await Promise.all([
         systemApi.getRuntimeInfo(),
-        systemApi.getRunningInfo(),
         taskApi.allCount(),
         settingsApi.dirCacheDbSize(),
         taskApi.openHandles(),
         settingsApi.onlineDevices(),
       ]);
       setRuntime(rt);
-      setRunning(ri);
       setTaskCount(tc);
       setDirCacheSize(dcs);
       setOpenHandles(oh);
@@ -41,11 +40,23 @@ export default function SystemInfo() {
     }
   }, [showToast]);
 
+  // Load real-time running info every 1s
+  const loadRunning = useCallback(async () => {
+    try {
+      const ri = await systemApi.getRunningInfo();
+      setRunning(ri);
+    } catch (e: any) {
+ // silent fail for real-time polling
+    }
+  }, []);
+
   useEffect(() => {
-    load();
-    const interval = setInterval(load, 5000);
-    return () => clearInterval(interval);
-  }, [load]);
+    loadStatic();
+    loadRunning();
+    const staticInterval = setInterval(loadStatic, 5000);
+    const realtimeInterval = setInterval(loadRunning, 1000);
+    return () => { clearInterval(staticInterval); clearInterval(realtimeInterval); };
+  }, [loadStatic, loadRunning]);
 
   const handleRestart = async () => {
     if (!confirm("确定重启 CloudDrive2 服务？")) return;
@@ -78,7 +89,7 @@ export default function SystemInfo() {
         <div className="glass rounded-xl p-5">
           <div className="flex items-center justify-between mb-4">
             <h3 className="text-sm font-semibold text-white flex items-center gap-2"><Server className="w-4 h-4" /> 运行时信息</h3>
-            <button onClick={load} className="p-1.5 rounded hover:bg-slate-700 text-slate-400"><RefreshCw className="w-4 h-4" /></button>
+            <button onClick={loadStatic} className="p-1.5 rounded hover:bg-slate-700 text-slate-400"><RefreshCw className="w-4 h-4" /></button>
           </div>
           <div className="grid grid-cols-2 md:grid-cols-4 gap-4">
             <StatCard icon={<Server className="w-5 h-5 text-blue-400" />} label="产品名称" value={runtime.productName} />
@@ -93,15 +104,13 @@ export default function SystemInfo() {
       {running && (
         <div className="glass rounded-xl p-5">
           <h3 className="text-sm font-semibold text-white mb-4 flex items-center gap-2"><Activity className="w-4 h-4" /> 实时监控</h3>
-          <div className="grid grid-cols-2 md:grid-cols-4 gap-4">
+          <div className="grid grid-cols-2 md:grid-cols-3 gap-4">
             <StatCard icon={<Cpu className="w-5 h-5 text-blue-400" />} label="CPU 使用率" value={`${running.cpuUsage?.toFixed(1)}%`} />
-            <StatCard icon={<MemoryStick className="w-5 h-5 text-green-400" />} label="内存使用" value={formatSize(parseInt(running.memUsageKB))} />
+            <StatCard icon={<MemoryStick className="w-5 h-5 text-green-400" />} label="内存使用" value={formatSize(parseInt(running.memUsageKB) || 0)} />
             <StatCard icon={<Clock className="w-5 h-5 text-yellow-400" />} label="运行时间" value={formatUptime(running.uptime)} />
-            <StatCard icon={<MemoryStick className="w-5 h-5 text-purple-400" />} label="总内存" value={formatSize(parseInt(running.totalMemoryKB))} />
+            <StatCard icon={<MemoryStick className="w-5 h-5 text-purple-400" />} label="总内存" value={formatSize(parseInt(running.totalMemoryKB) || 0)} />
             <StatCard icon={<Download className="w-5 h-5 text-green-400" />} label="下载速度" value={formatSpeed(running.downloadBytesPerSecond)} />
             <StatCard icon={<Upload className="w-5 h-5 text-blue-400" />} label="上传速度" value={formatSpeed(running.uploadBytesPerSecond)} />
-            <StatCard icon={<FolderTree className="w-5 h-5 text-orange-400" />} label="目录缓存数" value={String(running.dirCacheCount)} />
-            <StatCard icon={<HardDrive className="w-5 h-5 text-red-400" />} label="临时文件数" value={String(running.tempFileCount)} />
           </div>
         </div>
       )}
@@ -113,7 +122,7 @@ export default function SystemInfo() {
           <div className="grid grid-cols-3 gap-4">
             <StatCard icon={<Download className="w-5 h-5 text-green-400" />} label="下载任务" value={String(taskCount.downloadCount)} />
             <StatCard icon={<Upload className="w-5 h-5 text-blue-400" />} label="上传任务" value={String(taskCount.uploadCount)} />
-            <StatCard icon={<FolderTree className="w-5 h-5 text-orange-400" />} label="复制任务" value={String(taskCount.copyTaskCount)} />
+            <StatCard icon={<Copy className="w-5 h-5 text-orange-400" />} label="复制任务" value={String(taskCount.copyTaskCount)} />
           </div>
         </div>
       )}

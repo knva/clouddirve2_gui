@@ -4,10 +4,12 @@ import { settingsApi, diskCacheApi, systemApi, davApi, webServerApi, tokenApi } 
 import { formatSize } from "../utils";
 import {
   Settings as SettingsIcon, Save, Loader2, RefreshCw, Database, Server,
-  HardDrive, Globe, Key, ShieldCheck, Trash2, Plus, X, Download,
+  HardDrive, Globe, Key, ShieldCheck, Trash2, Plus, X, Download, Monitor, ExternalLink,
 } from "lucide-react";
+import { getDefaultVideoPlayer, setDefaultVideoPlayer } from "../components/MediaViewer";
+import { checkAvailablePlayers } from "../api/tauri";
 
-type Tab = "connection" | "general" | "cache" | "dav" | "tokens" | "webserver";
+type Tab = "connection" | "general" | "player" | "cache" | "dav" | "tokens" | "webserver";
 
 export default function Settings() {
   const { showToast } = useApp();
@@ -47,6 +49,7 @@ export default function Settings() {
   const tabs = [
     { id: "connection", label: "连接配置", icon: <Server className="w-4 h-4" /> },
     { id: "general", label: "通用设置", icon: <SettingsIcon className="w-4 h-4" /> },
+    { id: "player", label: "播放器", icon: <Monitor className="w-4 h-4" /> },
     { id: "cache", label: "磁盘缓存", icon: <Database className="w-4 h-4" /> },
     { id: "dav", label: "WebDAV", icon: <Server className="w-4 h-4" /> },
     { id: "tokens", label: "API Token", icon: <Key className="w-4 h-4" /> },
@@ -70,6 +73,7 @@ export default function Settings() {
         {tab === "general" && (
           <GeneralSettings settings={settings} setSettings={setSettings} loading={loading} saving={saving} onSave={handleSave} onReload={loadSettings} />
         )}
+        {tab === "player" && <PlayerSettings />}
         {tab === "cache" && <CacheSettings />}
         {tab === "dav" && <DavSettings />}
         {tab === "tokens" && <TokenSettings />}
@@ -235,6 +239,85 @@ function GeneralSettings({ settings, setSettings, loading, saving, onSave, onRel
           <RefreshCw className="w-4 h-4" /> 重新加载
         </button>
       </div>
+    </div>
+  );
+}
+
+function PlayerSettings() {
+  const { showToast } = useApp();
+  const [defaultPlayer, setDefaultPlayerState] = useState(getDefaultVideoPlayer());
+  const [availablePlayers, setAvailablePlayers] = useState<string[]>([]);
+
+  useEffect(() => {
+    checkAvailablePlayers().then(setAvailablePlayers).catch(() => setAvailablePlayers([]));
+  }, []);
+
+  const playerLabels: Record<string, string> = {
+    internal: "内置播放器（支持倍速/静音/全屏）",
+    vlc: "VLC 播放器",
+    potplayer: "PotPlayer",
+    "mpc-hc": "MPC-HC",
+    mpv: "MPV",
+    ask: "每次询问",
+  };
+
+  const handleChange = (value: string) => {
+    setDefaultVideoPlayer(value);
+    setDefaultPlayerState(value);
+    showToast("success", "默认播放器已设置");
+  };
+
+  return (
+    <div className="max-w-2xl space-y-6">
+      <Section title="视频播放器配置">
+        <Field label="默认视频播放器">
+          <select
+            value={defaultPlayer}
+            onChange={(e) => handleChange(e.target.value)}
+            className="input"
+          >
+            <option value="internal">内置播放器（支持倍速/静音/全屏）</option>
+            <option value="ask">每次询问</option>
+            {availablePlayers.map((p) => (
+              <option key={p} value={p}>{playerLabels[p] || p}</option>
+            ))}
+          </select>
+        </Field>
+        <p className="text-xs text-slate-500">
+          设置后，在文件列表中点击视频文件将自动使用选定的播放器播放。
+          内置播放器支持倍速播放（0.25x ~ 4x）、静音切换、全屏等快捷操作。
+        </p>
+      </Section>
+
+      <Section title="已安装的外部播放器">
+        {availablePlayers.length === 0 ? (
+          <div className="flex items-center gap-2 text-sm text-yellow-400">
+            <ExternalLink className="w-4 h-4" />
+            未检测到已安装的外部播放器。请安装 VLC、PotPlayer、MPC-HC 或 MPV。
+          </div>
+        ) : (
+          <div className="space-y-2">
+            {availablePlayers.map((p) => (
+              <div key={p} className="flex items-center gap-3 p-3 bg-slate-800/50 rounded-lg">
+                <Monitor className="w-4 h-4 text-blue-400" />
+                <span className="text-sm text-slate-200">{playerLabels[p] || p}</span>
+                {defaultPlayer === p && <span className="text-xs text-green-400 ml-auto">已设为默认</span>}
+              </div>
+            ))}
+          </div>
+        )}
+      </Section>
+
+      <Section title="内置播放器快捷键">
+        <div className="grid grid-cols-2 gap-2 text-xs text-slate-400">
+          <div><kbd className="px-1.5 py-0.5 bg-slate-700 rounded">空格/K</kbd> 播放/暂停</div>
+          <div><kbd className="px-1.5 py-0.5 bg-slate-700 rounded">←/→</kbd> 快退/快进 10秒</div>
+          <div><kbd className="px-1.5 py-0.5 bg-slate-700 rounded">M</kbd> 静音切换</div>
+          <div><kbd className="px-1.5 py-0.5 bg-slate-700 rounded">F</kbd> 全屏切换</div>
+          <div><kbd className="px-1.5 py-0.5 bg-slate-700 rounded">&lt;/&gt;</kbd> 减速/加速</div>
+          <div><kbd className="px-1.5 py-0.5 bg-slate-700 rounded">Esc</kbd> 退出播放器</div>
+        </div>
+      </Section>
     </div>
   );
 }

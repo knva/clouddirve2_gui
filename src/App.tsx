@@ -1,6 +1,7 @@
 import React, { useState, useEffect } from "react";
 import { AppProvider, useApp } from "./contexts/AppContext";
 import { ClipboardProvider } from "./contexts/ClipboardContext";
+import { ThemeProvider, useTheme } from "./contexts/ThemeContext";
 import ToastContainer from "./components/Toast";
 import Login from "./pages/Login";
 import FileBrowser from "./pages/FileBrowser";
@@ -25,6 +26,10 @@ import {
   Download,
   Menu,
   X,
+  LogOut,
+  Sun,
+  Moon,
+  MonitorSmartphone,
 } from "lucide-react";
 
 type Page =
@@ -50,8 +55,51 @@ const navItems: { id: Page; label: string; icon: React.ReactNode }[] = [
   { id: "account", label: "账户中心", icon: <UserCircle className="w-5 h-5" /> },
 ];
 
+function ThemeToggle() {
+  const { theme, setTheme } = useTheme();
+  const [open, setOpen] = useState(false);
+
+  const options = [
+    { id: "dark" as const, label: "夜间", icon: <Moon className="w-4 h-4" /> },
+    { id: "light" as const, label: "日间", icon: <Sun className="w-4 h-4" /> },
+    { id: "auto" as const, label: "自动", icon: <MonitorSmartphone className="w-4 h-4" /> },
+  ];
+
+  const current = options.find((o) => o.id === theme) || options[0];
+
+  return (
+    <div className="relative">
+      <button
+        onClick={() => setOpen(!open)}
+        className="p-2 rounded-lg hover:bg-slate-800 text-slate-400 hover:text-slate-200"
+        title="切换主题"
+      >
+        {current.icon}
+      </button>
+      {open && (
+        <>
+          <div className="fixed inset-0 z-40" onClick={() => setOpen(false)} />
+          <div className="absolute right-0 top-full mt-1 z-50 glass rounded-lg p-1 min-w-[120px] shadow-xl">
+            {options.map((o) => (
+              <button
+                key={o.id}
+                onClick={() => { setTheme(o.id); setOpen(false); }}
+                className={`w-full flex items-center gap-2 px-3 py-2 rounded-md text-sm transition-all ${
+                  theme === o.id ? "bg-blue-600 text-white" : "text-slate-400 hover:bg-slate-800 hover:text-slate-200"
+                }`}
+              >
+                {o.icon} {o.label}
+              </button>
+            ))}
+          </div>
+        </>
+      )}
+    </div>
+  );
+}
+
 function MainApp() {
-  const { isLoggedIn, systemInfo, refreshSystemInfo, showToast } = useApp();
+  const { isLoggedIn, systemInfo, refreshSystemInfo, showToast, logout } = useApp();
   const [currentPage, setCurrentPage] = useState<Page>("files");
   const [sidebarOpen, setSidebarOpen] = useState(true);
 
@@ -116,17 +164,26 @@ function MainApp() {
           ))}
         </nav>
 
-        {systemInfo && (
-          <div className="p-4 border-t border-slate-800">
-            <div className="flex items-center gap-2 text-xs text-slate-500">
-              <div className={`w-2 h-2 rounded-full ${systemInfo.SystemReady ? "bg-green-500" : "bg-yellow-500"}`} />
-              <span>{systemInfo.SystemReady ? "系统就绪" : "系统初始化中..."}</span>
-            </div>
-            {systemInfo.UserName && (
-              <p className="text-xs text-slate-400 mt-1 truncate">用户: {systemInfo.UserName}</p>
-            )}
-          </div>
-        )}
+        <div className="p-4 border-t border-slate-800 space-y-2">
+          {systemInfo && (
+            <>
+              <div className="flex items-center gap-2 text-xs text-slate-500">
+                <div className={`w-2 h-2 rounded-full ${systemInfo.SystemReady ? "bg-green-500" : "bg-yellow-500"}`} />
+                <span>{systemInfo.SystemReady ? "系统就绪" : "系统初始化中..."}</span>
+              </div>
+              {systemInfo.UserName && (
+                <p className="text-xs text-slate-400 truncate">用户: {systemInfo.UserName}</p>
+              )}
+            </>
+          )}
+          <button
+            onClick={() => { if (confirm("确定退出登录？")) { logout(); } }}
+            className="w-full flex items-center gap-2 px-3 py-2 rounded-lg text-sm text-red-400 hover:bg-red-600/10 transition-colors"
+          >
+            <LogOut className="w-4 h-4" />
+            退出登录
+          </button>
+        </div>
       </aside>
 
       {/* Main content */}
@@ -144,6 +201,7 @@ function MainApp() {
               {navItems.find((n) => n.id === currentPage)?.label}
             </h2>
           </div>
+          <ThemeToggle />
         </header>
 
         {/* Page content */}
@@ -155,11 +213,13 @@ function MainApp() {
 
 export default function App() {
   return (
-    <AppProvider>
-      <ClipboardProvider>
-        <MainApp />
-        <ToastContainer />
-      </ClipboardProvider>
-    </AppProvider>
+    <ThemeProvider>
+      <AppProvider>
+        <ClipboardProvider>
+          <MainApp />
+          <ToastContainer />
+        </ClipboardProvider>
+      </AppProvider>
+    </ThemeProvider>
   );
 }

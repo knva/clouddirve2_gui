@@ -20,6 +20,7 @@ interface AppContextType {
   apiKey: string;
   setApiKey: (key: string) => void;
   applyConnectionConfig: (url: string, key: string) => Promise<void>;
+  logout: () => Promise<void>;
   toasts: Toast[];
   showToast: (type: Toast["type"], message: string) => void;
   removeToast: (id: number) => void;
@@ -38,14 +39,19 @@ export function useApp() {
 export function AppProvider({ children }: { children: React.ReactNode }) {
   const [systemInfo, setSystemInfo] = useState<CloudDriveSystemInfo | null>(null);
   const [accountStatus, setAccountStatus] = useState<AccountStatusResult | null>(null);
+  // Login state: only true if WE have a valid token that works
   const [isLoggedIn, setIsLoggedIn] = useState(false);
   const [serverUrl, setServerUrl] = useState(() => localStorage.getItem("happycd2_serverUrl") || "http://localhost:19798");
-  const [apiKey, setApiKey] = useState(() => localStorage.getItem("happycd2_apiKey") || "");
+  const [apiKey, setApiKeyState] = useState(() => localStorage.getItem("happycd2_apiKey") || "");
   const [toasts, setToasts] = useState<Toast[]>([]);
   const [loading, setLoading] = useState(false);
 
   useEffect(() => { localStorage.setItem("happycd2_serverUrl", serverUrl); }, [serverUrl]);
-  useEffect(() => { localStorage.setItem("happycd2_apiKey", apiKey); }, [apiKey]);
+
+  const setApiKey = useCallback((key: string) => {
+    localStorage.setItem("happycd2_apiKey", key);
+    setApiKeyState(key);
+  }, []);
 
   const applyConnectionConfig = useCallback(async (url: string, key: string) => {
     await systemApi.setConfig(url, key || undefined);
@@ -62,15 +68,35 @@ export function AppProvider({ children }: { children: React.ReactNode }) {
     setToasts((prev) => prev.filter((t) => t.id !== id));
   }, []);
 
+  // Logout: best-effort server logout + always clear local state
+  const logout = useCallback(async () => {
+    try {
+      await authApi.logout(true);
+    } catch (e) {
+      // Ignore server-side errors - we're clearing local state regardless
+      console.error("Server logout failed (ignoring):", e);
+    }
+    // Always clear local token and go to login page
+    setApiKey("");
+    try { await systemApi.setToken(""); } catch {}
+    setIsLoggedIn(false);
+    setSystemInfo(null);
+    setAccountStatus(null);
+  }, [setApiKey]);
+
   const refreshSystemInfo = useCallback(async () => {
     try {
       const info = await systemApi.getSystemInfo();
       setSystemInfo(info);
-      setIsLoggedIn(!!info.IsLogin);
+      // Do NOT change isLoggedIn based on GetSystemInfo.IsLogin
+      // That field reflects server-side session from ANY client, not our token
     } catch (e: any) {
-      // If UNAUTHENTICATED or any other error, ensure login page shows
+      // If we get UNAUTHENTICATED, our token is invalid
+      const msg = e.message || String(e);
+      if (msg.includes("UNAUTHENTICATED")) {
+        setIsLoggedIn(false);
+      }
       console.error("Failed to get system info:", e);
-      setIsLoggedIn(false);
     }
   }, []);
 
@@ -83,19 +109,40 @@ export function AppProvider({ children }: { children: React.ReactNode }) {
     }
   }, []);
 
-  // On mount: configure gRPC connection, then check system info
+  // On mount: configure gRPC connection, then verify token
   useEffect(() => {
     (async () => {
       try {
-        // Configure the Rust gRPC client with persisted server URL and token
+        // 1. Always configure the gRPC channel first
         await systemApi.setConfig(serverUrl, apiKey || undefined);
         if (apiKey) {
           await systemApi.setToken(apiKey);
         }
-        // Check if we're logged in - this is a public API, should work without token
-        await refreshSystemInfo();
+
+        // 2. Get system info (public API, no auth needed)
+        try {
+          const info = await systemApi.getSystemInfo();
+          setSystemInfo(info);
+        } catch (e) {
+          console.error("GetSystemInfo failed:", e);
+        }
+
+        // 3. If we have a stored token, verify it with an authenticated API call
+        if (apiKey) {
+          try {
+            await authApi.getAccountStatus();
+            // Token works! We're logged in.
+            setIsLoggedIn(true);
+          } catch (e: any) {
+            // Token is invalid/expired
+            console.error("Token verification failed:", e);
+            setIsLoggedIn(false);
+          }
+        } else {
+          // No token = show login page
+          setIsLoggedIn(false);
+        }
       } catch (e) {
-        // If config fails, just show the login page
         console.error("Init failed:", e);
         setIsLoggedIn(false);
       }
@@ -108,7 +155,7 @@ export function AppProvider({ children }: { children: React.ReactNode }) {
       value={{
         systemInfo, refreshSystemInfo, accountStatus, refreshAccountStatus,
         isLoggedIn, setIsLoggedIn, serverUrl, setServerUrl, apiKey, setApiKey,
-        applyConnectionConfig, toasts, showToast, removeToast, loading, setLoading,
+        applyConnectionConfig, logout, toasts, showToast, removeToast, loading, setLoading,
       }}
     >
       {children}

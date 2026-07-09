@@ -1,17 +1,24 @@
 import { invoke } from "@tauri-apps/api/core";
 
-// Helper: call a gRPC method via Tauri
+// Helper: call a gRPC method via Tauri, with proper error wrapping
 async function grpc(method: string, params?: any): Promise<any> {
-  return invoke("grpc_call", { method, params: params || {} });
+  try {
+    return await invoke("grpc_call", { method, params: params || {} });
+  } catch (e: any) {
+    // Tauri invoke rejects with a string, not an Error object
+    // Wrap it so that e.message works everywhere
+    const msg = typeof e === "string" ? e : (e?.message || String(e));
+    throw new Error(msg);
+  }
 }
 
 // ==================== System & Auth ====================
 export const systemApi = {
-  health: () => invoke("grpc_health"),
+  health: () => invoke("grpc_health").catch((e: any) => { throw new Error(typeof e === 'string' ? e : String(e)); }),
   getSystemInfo: () => grpc("GetSystemInfo"),
-  getConfig: () => invoke("grpc_get_token"),
-  setConfig: (url: string, token?: string) => invoke("grpc_set_config", { url, token: token || null }),
-  setToken: (token: string) => invoke("grpc_set_token", { token }),
+  getConfig: () => invoke("grpc_get_token").catch((e: any) => { throw new Error(typeof e === 'string' ? e : String(e)); }),
+  setConfig: (url: string, token?: string) => invoke("grpc_set_config", { url, token: token || null }).catch((e: any) => { throw new Error(typeof e === 'string' ? e : String(e)); }),
+  setToken: (token: string) => invoke("grpc_set_token", { token }).catch((e: any) => { throw new Error(typeof e === 'string' ? e : String(e)); }),
   getRuntimeInfo: () => grpc("GetRuntimeInfo"),
   getRunningInfo: () => grpc("GetRunningInfo"),
   getServiceCapabilities: () => grpc("GetServiceCapabilities"),

@@ -9,6 +9,11 @@ import {
   ClipboardCheck, ClipboardList, CheckSquare, Square, Send, Zap,
 } from "lucide-react";
 
+// Only 115 and 123 cloud drives support offline download
+const OFFLINE_SUPPORTED_CLOUDS = ["115", "123"];
+const isOfflineSupported = (name: string) =>
+  OFFLINE_SUPPORTED_CLOUDS.some((c) => name.toLowerCase().includes(c.toLowerCase()));
+
 export default function OfflineTasks() {
   const { showToast } = useApp();
   const {
@@ -17,8 +22,9 @@ export default function OfflineTasks() {
   } = useClipboard();
   const [clouds, setClouds] = useState<any[]>([]);
   const [selectedCloud, setSelectedCloud] = useState<string>("");
+  const [selectedCloudAccountId, setSelectedCloudAccountId] = useState<string>("");
   const [offlineFiles, setOfflineFiles] = useState<OfflineFile[]>([]);
-  const [quota, setQuota] = useState<any>(null);
+  const [quota, setQuota] = useState<{ total: number; used: number; left: number } | null>(null);
   const [loading, setLoading] = useState(false);
   const [showAdd, setShowAdd] = useState(false);
   const [addUrl, setAddUrl] = useState("");
@@ -30,9 +36,13 @@ export default function OfflineTasks() {
   const loadClouds = useCallback(async () => {
     try {
       const result = await cloudApi.list();
-      setClouds(result.apis || []);
-      if (result.apis && result.apis.length > 0 && !selectedCloud) {
-        setSelectedCloud(result.apis[0].name);
+      const allApis = result.apis || [];
+      // Filter to only show clouds that support offline download
+      const offlineClouds = allApis.filter((c: any) => isOfflineSupported(c.name));
+      setClouds(offlineClouds);
+      if (offlineClouds.length > 0 && !selectedCloud) {
+        setSelectedCloud(offlineClouds[0].name);
+        setSelectedCloudAccountId(offlineClouds[0].userName || "");
       }
     } catch (e: any) {
       showToast("error", `加载云盘列表失败: ${e.message}`);
@@ -43,16 +53,22 @@ export default function OfflineTasks() {
     if (!selectedCloud) return;
     setLoading(true);
     try {
-      const result = await offlineApi.listAll(selectedCloud, "", 1);
+      const result = await offlineApi.listAll(selectedCloud, selectedCloudAccountId, 1);
       setOfflineFiles(result.offlineFiles || []);
-      setQuota(result.status);
+      // Fetch proper quota info via dedicated API
+      try {
+        const q = await offlineApi.quota(selectedCloud, selectedCloudAccountId);
+        setQuota({ total: q.total, used: q.used, left: q.left });
+      } catch {
+        setQuota(null);
+      }
     } catch (e: any) {
       showToast("error", `加载离线文件失败: ${e.message}`);
       setOfflineFiles([]);
     } finally {
       setLoading(false);
     }
-  }, [selectedCloud, showToast]);
+  }, [selectedCloud, selectedCloudAccountId, showToast]);
 
   useEffect(() => {
     loadClouds();
@@ -83,7 +99,7 @@ export default function OfflineTasks() {
   const handleRemove = async (file: OfflineFile) => {
     if (!confirm(`确定删除离线任务: ${file.name}？`)) return;
     try {
-      await offlineApi.remove(selectedCloud, "", false, [file.infoHash]);
+      await offlineApi.remove(selectedCloud, selectedCloudAccountId, false, [file.infoHash]);
       showToast("success", "删除成功");
       loadOfflineFiles();
     } catch (e: any) {
@@ -93,7 +109,7 @@ export default function OfflineTasks() {
 
   const handleClear = async (filter: string) => {
     try {
-      await offlineApi.clear(selectedCloud, "", filter, false);
+      await offlineApi.clear(selectedCloud, selectedCloudAccountId, filter, false);
       showToast("success", "清理成功");
       loadOfflineFiles();
     } catch (e: any) {
@@ -200,7 +216,11 @@ export default function OfflineTasks() {
       <div className="flex items-center gap-2 mb-4 flex-wrap">
         <select
           value={selectedCloud}
-          onChange={(e) => setSelectedCloud(e.target.value)}
+          onChange={(e) => {
+            const c = clouds.find((c) => c.name === e.target.value);
+            setSelectedCloud(e.target.value);
+            setSelectedCloudAccountId(c?.userName || "");
+          }}
           className="px-3 py-2 bg-slate-800 rounded-lg text-white text-sm border border-slate-700 focus:border-blue-500 focus:outline-none"
         >
           <option value="">选择云盘</option>
@@ -366,12 +386,23 @@ export default function OfflineTasks() {
           离线下载配额: <span className="text-white">{quota.used}</span> / {quota.total} (剩余: {quota.left})
         </div>
       )}
+      {selectedCloud && !quota && !loading && (
+        <div className="mb-4 text-sm text-slate-500">
+          离线下载配额: 获取中...
+        </div>
+      )}
 
       {/* File list */}
       <div className="flex-1 overflow-auto rounded-lg border border-slate-800">
         {loading ? (
           <div className="h-full flex items-center justify-center">
             <Loader2 className="w-8 h-8 text-blue-500 animate-spin" />
+          </div>
+        ) : clouds.length === 0 ? (
+          <div className="h-full flex flex-col items-center justify-center text-slate-500">
+            <Download className="w-12 h-12 mb-3 opacity-50" />
+            <p>暂无支持离线下载的云盘</p>
+            <p className="text-xs mt-1">仅 115网盘 和 123云盘 支持离线下载</p>
           </div>
         ) : !selectedCloud ? (
           <div className="h-full flex flex-col items-center justify-center text-slate-500">

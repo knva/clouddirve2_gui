@@ -28,16 +28,33 @@ export default function Login() {
     }
     setLoading(true);
     try {
-      // First try to get token
+      // Step 1: Get token via GetToken API
       const tokenResult = await authApi.getToken(userName, password, totpCode || undefined);
       
       if (tokenResult.success && tokenResult.token) {
+        // Step 2: Set token in gRPC client
         await systemApi.setToken(tokenResult.token);
         setApiKey(tokenResult.token);
-        showToast("success", "登录成功！");
-        setIsLoggedIn(true);
-        await refreshSystemInfo();
-        await refreshAccountStatus();
+        
+        // Step 3: Call Login to create server-side session
+        try {
+          await authApi.login(userName, password, true);
+        } catch (loginErr) {
+          // Login might fail if already logged in, that's OK - we have a valid token
+          console.error("Login call failed (non-fatal):", loginErr);
+        }
+        
+        // Step 4: Verify token works with an authenticated API call
+        try {
+          await authApi.getAccountStatus();
+          showToast("success", "登录成功！");
+          setIsLoggedIn(true);
+          await refreshSystemInfo();
+          await refreshAccountStatus();
+        } catch (verifyErr: any) {
+          showToast("error", `Token验证失败: ${verifyErr.message}`);
+          setIsLoggedIn(false);
+        }
       } else if (tokenResult.errorMessage) {
         // Check if 2FA is required
         if (tokenResult.errorMessage.includes("2FA") || tokenResult.errorMessage.includes("TOTP") || tokenResult.errorMessage.includes("2fa")) {
@@ -46,6 +63,8 @@ export default function Login() {
         } else {
           showToast("error", tokenResult.errorMessage);
         }
+      } else {
+        showToast("error", "登录失败，请检查用户名和密码");
       }
     } catch (e: any) {
       const msg = e.message || "";
@@ -71,10 +90,17 @@ export default function Login() {
       if (result.token) {
         await systemApi.setToken(result.token);
         setApiKey(result.token);
-        showToast("success", "登录成功！");
-        setIsLoggedIn(true);
-        await refreshSystemInfo();
-        await refreshAccountStatus();
+        // Verify token with authenticated call
+        try {
+          await authApi.getAccountStatus();
+          showToast("success", "登录成功！");
+          setIsLoggedIn(true);
+          await refreshSystemInfo();
+          await refreshAccountStatus();
+        } catch (verifyErr: any) {
+          showToast("error", `Token验证失败: ${verifyErr.message}`);
+          setIsLoggedIn(false);
+        }
       } else {
         showToast("error", result.errorMessage || "登录失败");
       }
@@ -110,16 +136,24 @@ export default function Login() {
     }
     setLoading(true);
     try {
+      // Set token in gRPC client
       await systemApi.setToken(token);
       setApiKey(token);
-      const info = await systemApi.getSystemInfo();
-      if (info.IsLogin) {
+      
+      // Verify token by calling an authenticated API
+      // GetSystemInfo is public and doesn't validate our token, so use GetAccountStatus instead
+      try {
+        await authApi.getAccountStatus();
         showToast("success", "Token 登录成功！");
         setIsLoggedIn(true);
         await refreshSystemInfo();
         await refreshAccountStatus();
-      } else {
-        showToast("error", "Token 无效");
+      } catch (verifyErr: any) {
+        // Token is invalid - clear it
+        await systemApi.setToken("");
+        setApiKey("");
+        showToast("error", `Token 无效: ${verifyErr.message}`);
+        setIsLoggedIn(false);
       }
     } catch (e: any) {
       showToast("error", `Token 登录失败: ${e.message}`);
@@ -346,7 +380,7 @@ export default function Login() {
         </div>
 
         <p className="text-center text-xs text-slate-600 mt-6">
-          CloudDrive2 gRPC API • Tauri + React + Node.js
+          CloudDrive2 gRPC API • Tauri + React + Rust
         </p>
       </div>
     </div>

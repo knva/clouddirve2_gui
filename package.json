@@ -1,6 +1,6 @@
 {
   "name": "happycd2",
-  "version": "1.0.2",
+  "version": "1.0.3",
   "description": "CloudDrive2 GUI - Tauri + React (Native gRPC, no Node.js required)",
   "type": "module",
   "scripts": {

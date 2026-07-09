@@ -7,7 +7,7 @@ import {
 } from "lucide-react";
 
 export default function Account() {
-  const { showToast, accountStatus, refreshAccountStatus, setIsLoggedIn, systemInfo } = useApp();
+  const { showToast, accountStatus, refreshAccountStatus, logout, systemInfo } = useApp();
   const [loading, setLoading] = useState(false);
   const [twoFAStatus, setTwoFAStatus] = useState<any>(null);
   const [sessions, setSessions] = useState<any[]>([]);
@@ -42,13 +42,8 @@ export default function Account() {
 
   const handleLogout = async () => {
     if (!confirm("确定退出登录？")) return;
-    try {
-      await authApi.logout(true);
-      showToast("success", "已退出登录");
-      setIsLoggedIn(false);
-    } catch (e: any) {
-      showToast("error", e.message);
-    }
+    await logout();
+    showToast("success", "已退出登录");
   };
 
   if (loading && !accountStatus) {

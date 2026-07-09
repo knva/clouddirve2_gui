@@ -66,11 +66,14 @@ jobs:
             4. 首次使用请前往「设置 → 连接配置」配置服务器地址和 API Key
             5. 开始管理你的云盘文件
 
-            ### v1.0.2 更新
-            - 🚀 **移除 Node.js 依赖** — 使用 Rust 原生 gRPC 客户端，无需安装 Node.js
-            - 🔧 修复首次运行 UNAUTHENTICATED 错误，正确显示登录界面
-            - 📦 便携版不再需要 backend 文件夹，单个 exe 即可运行
-            - ⚡ 性能提升 — 原生 gRPC 通信，减少中间层
+            ### v1.0.3 更新
+            - 🎨 **主题切换** — 支持夜间模式、日间模式、自动切换
+            - 📊 修复任务统计中上传/下载显示 undefined 的问题
+            - 📈 实时监控改为每秒查询一次数据
+            - 👤 用户中心现在显示会员等级信息
+            - 🗑️ 移除目录缓存数和临时文件数指标
+            - 🔧 离线下载只显示支持的云盘（115、123）
+            - 🔧 修复离线下载配额显示错误
           releaseDraft: false
           prerelease: false
           args: --target x86_64-pc-windows-msvc
@@ -85,7 +88,7 @@ jobs:
           New-Item -ItemType Directory -Force -Path $portableDir
           Copy-Item $exePath "$portableDir\HappyCD2.exe"
           @"
-          HappyCD2 便携版 v1.0.2
+          HappyCD2 便携版 v1.0.3
           ========================
 
           使用方法:
